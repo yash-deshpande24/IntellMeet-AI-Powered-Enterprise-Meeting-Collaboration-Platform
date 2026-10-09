@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <defs>
+    <linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+  </defs>
+  <rect width="48" height="48" rx="12" fill="url(#primaryGrad)"/>
+  <path d="M14 18C14 15.7909 15.7909 14 18 14H24C28.4183 14 32 17.5817 32 22C32 26.4183 28.4183 30 24 30H18C15.7909 30 14 28.2091 14 26V18Z" fill="white" fill-opacity="0.95"/>
+  <circle cx="21" cy="22" r="3.5" fill="url(#primaryGrad)"/>
+  <path d="M28 20L36 15V33L28 28V20Z" fill="url(#accentGrad)" rx="2"/>
+  <circle cx="34" cy="18" r="2" fill="#F43F5E"/>
+</svg>

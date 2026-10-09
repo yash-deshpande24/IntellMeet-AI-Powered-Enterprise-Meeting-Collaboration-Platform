@@ -1,0 +1,183 @@
+import React, { useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { useNotification } from '../../context/NotificationContext';
+import { Input } from '../../components/common/Input';
+import { Button } from '../../components/common/Button';
+import { Card } from '../../components/common/Card';
+import { Video, Eye, EyeOff, Lock, Mail, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
+
+export const LoginPage = () => {
+  const { login, loading } = useAuth();
+  const { success, error } = useNotification();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [errors, setErrors] = useState({});
+
+  const from = location.state?.from?.pathname || '/dashboard';
+
+  const validate = () => {
+    const errs = {};
+    if (!email.trim()) {
+      errs.email = 'Email address is required';
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      errs.email = 'Please provide a valid email format';
+    }
+    if (!password) {
+      errs.password = 'Password is required';
+    } else if (password.length < 6) {
+      errs.password = 'Password must be at least 6 characters';
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validate()) return;
+
+    try {
+      await login(email, password, rememberMe);
+      success('Welcome back to IntellMeet Enterprise!');
+      navigate(from, { replace: true });
+    } catch (err) {
+      error(err.message || 'Failed to authenticate');
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    setEmail('alex.vance@innovatecorp.com');
+    setPassword('Enterprise2026!');
+    try {
+      await login('alex.vance@innovatecorp.com', 'Enterprise2026!', true);
+      success('Logged in with Demo Enterprise Admin profile');
+      navigate(from, { replace: true });
+    } catch (err) {
+      error('Demo login failed');
+    }
+  };
+
+  return (
+    <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-8 animate-fade-in">
+        <div className="text-center space-y-2">
+          <Link to="/" className="inline-flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md">
+              <Video className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+              IntellMeet
+            </span>
+          </Link>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            Sign In to Enterprise Workspace
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            Access your secure AI-powered meetings and workspaces
+          </p>
+        </div>
+
+        {/* 1-Click Demo Login Banner */}
+        <div className="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 flex items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
+            <div className="truncate">
+              <p className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                Want a fast demo?
+              </p>
+              <p className="text-[11px] text-indigo-700 dark:text-indigo-300 truncate">
+                Pre-loaded with executive summaries & rooms
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDemoLogin}
+            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex-shrink-0 transition-colors shadow-sm"
+          >
+            1-Click Demo
+          </button>
+        </div>
+
+        <Card className="p-8 sm:p-10 shadow-xl">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <Input
+              label="Work Email"
+              type="email"
+              placeholder="name@company.com"
+              leftIcon={Mail}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              error={errors.email}
+              autoComplete="email"
+            />
+
+            <div>
+              <Input
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="••••••••••••"
+                leftIcon={Lock}
+                rightIcon={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="focus:outline-none hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                }
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                error={errors.password}
+                autoComplete="current-password"
+              />
+              <div className="flex items-center justify-between mt-3 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600 dark:text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-dark-border"
+                  />
+                  <span>Remember this device</span>
+                </label>
+                <Link
+                  to="/forgot-password"
+                  className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              variant="gradient"
+              size="lg"
+              className="w-full"
+              isLoading={loading}
+              rightIcon={ArrowRight}
+            >
+              Sign In to Workspace
+            </Button>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-slate-100 dark:border-dark-border text-center">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Don't have an enterprise account yet?{' '}
+              <Link to="/signup" className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                Create one free
+              </Link>
+            </p>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};
