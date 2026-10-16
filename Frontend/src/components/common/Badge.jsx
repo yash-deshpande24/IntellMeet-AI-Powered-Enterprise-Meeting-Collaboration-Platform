@@ -1,5 +1,6 @@
 import React from 'react';
 
+// Reusable status and tag badge component
 export const Badge = ({
   children,
   variant = 'indigo',
@@ -7,6 +8,7 @@ export const Badge = ({
   dot = false,
   className = '',
 }) => {
+  // Color palette styles
   const variantStyles = {
     indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200/60 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800/60',
     purple: 'bg-purple-50 text-purple-700 border-purple-200/60 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800/60',
@@ -17,6 +19,7 @@ export const Badge = ({
     cyan: 'bg-cyan-50 text-cyan-700 border-cyan-200/60 dark:bg-cyan-950/60 dark:text-cyan-300 dark:border-cyan-800/60',
   };
 
+  // Pulsing dot colors
   const dotColors = {
     indigo: 'bg-indigo-500',
     purple: 'bg-purple-500',
@@ -27,16 +30,23 @@ export const Badge = ({
     cyan: 'bg-cyan-500',
   };
 
+  // Size styles
   const sizeStyles = {
     sm: 'text-[11px] px-2 py-0.5',
     md: 'text-xs px-2.5 py-1',
   };
 
+  const selectedVariant = variantStyles[variant] || variantStyles.indigo;
+  const selectedDotColor = dotColors[variant] || dotColors.indigo;
+  const selectedSize = sizeStyles[size] || sizeStyles.md;
+
   return (
     <span
-      className={`inline-flex items-center font-medium rounded-full border ${variantStyles[variant] || variantStyles.indigo} ${sizeStyles[size]} ${className}`}
+      className={`inline-flex items-center font-medium rounded-full border ${selectedVariant} ${selectedSize} ${className}`}
     >
-      {dot && <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${dotColors[variant] || dotColors.indigo} animate-pulse`} />}
+      {dot && (
+        <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${selectedDotColor} animate-pulse`} />
+      )}
       {children}
     </span>
   );

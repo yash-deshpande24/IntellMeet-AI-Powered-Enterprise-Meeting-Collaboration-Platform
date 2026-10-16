@@ -1,16 +1,93 @@
-# React + Vite
+# IntellMeet - AI-Powered Enterprise Meeting Platform (Frontend)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+IntellMeet is a modern, responsive web application for enterprise video collaboration and AI-powered meeting intelligence. It offers instant meeting lobbies, live meeting rooms, automated transcripts, executive AI summaries, action items tracking, and team workspace management.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🚀 Tech Stack
 
-## React Compiler
+- **Framework**: [React 18](https://reactjs.org/) + [Vite](https://vitejs.dev/)
+- **Routing**: [React Router v6](https://reactrouter.com/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **State Management**: React Context API (`AuthContext`, `ThemeContext`, `MeetingContext`, `NotificationContext`)
+- **Animations**: Tailwind transitions and keyframe animations
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## ✨ Features
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- **Authentication & Security**:
+  - Sign in, Sign up, Forgot Password, Reset Password, and Email OTP verification.
+  - 1-Click Demo login for instant testing.
+  - Route protection with `ProtectedRoute`.
+
+- **Enterprise Dashboard**:
+  - Meeting overview metrics (upcoming meetings, hours, tasks, AI summaries).
+  - Quick actions to launch instant meetings, join with an ID, or schedule.
+  - Dark / Light mode toggle with persistent local storage.
+
+- **Meetings & Lobby**:
+  - Pre-meeting lobby with audio, video, and device selectors.
+  - Immersive live meeting interface with participant grid, audio/video controls, chat drawer, participants list, and emoji reactions.
+  - Meeting ended summary view.
+
+- **AI Intelligence Suite**:
+  - AI Meeting Summaries with key highlights and sentiment analysis.
+  - Searchable timestamped smart transcripts with speaker identification.
+  - Action Items checklist with completion status and assigned owners.
+  - IntellBot interactive assistant for post-meeting queries.
+
+- **Collaboration Hub**:
+  - Team member directory, shared files repository, and workspace calendar.
+
+---
+
+## 📁 Project Structure
+
+```text
+src/
+├── assets/          # Static assets, logos, and images
+├── components/      # Reusable UI components
+│   └── common/      # Button, Input, Modal, Badge, Card, Avatar, ToastContainer, ProtectedRoute
+├── context/         # React Context providers (Auth, Meeting, Theme, Notification)
+├── data/            # Mock dataset for meetings, transcripts, and summaries
+├── layouts/         # Layout wrappers (DashboardLayout, MeetingLayout, PublicLayout)
+├── pages/           # Application views
+│   ├── ai/          # AI Summaries, Transcripts, Action Items, Assistant
+│   ├── auth/        # Login, Signup, OTP Verification, Password Reset
+│   ├── collaboration/ # Team Members, Files, Calendar, Workspace
+│   ├── meetings/    # Live Room, Pre-Call Lobby, Schedule, Join, History
+│   ├── public/      # Landing Page, About, Contact
+│   └── settings/    # Profile, Device Preferences, Security
+├── services/        # Axios API client and WebSocket service
+├── App.jsx          # Main route configuration
+├── index.css        # Global Tailwind and custom utility styles
+└── main.jsx         # Application entry point
+```
+
+---
+
+## 🛠️ Getting Started
+
+### 1. Install Dependencies
+```bash
+npm install
+```
+
+### 2. Start Development Server
+```bash
+npm run dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser to view the application.
+
+### 3. Production Build
+```bash
+npm run build
+```
+Creates an optimized production bundle inside the `dist/` directory.
+
+---
+
+## 🎨 Theme Support
+IntellMeet features automatic theme detection and manual toggle between Light Mode and Dark Mode. Themes are synchronized across all views and stored in `localStorage`.

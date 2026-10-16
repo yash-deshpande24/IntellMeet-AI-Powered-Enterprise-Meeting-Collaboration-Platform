@@ -1,14 +1,20 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
+// Create Theme Context
 const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
+  // Check localStorage for saved theme or default to 'light'
   const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('intellmeet_theme');
-    if (saved) return saved;
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      return savedTheme;
+    }
+    // Default to system preference if available
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
 
+  // Apply theme class to root html element and save to localStorage
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') {
@@ -16,20 +22,24 @@ export const ThemeProvider = ({ children }) => {
     } else {
       root.classList.remove('dark');
     }
-    localStorage.setItem('intellmeet_theme', theme);
+    localStorage.setItem('theme', theme);
   }, [theme]);
 
+  // Toggle between light and dark modes
   const toggleTheme = () => {
-    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
+    setTheme((prevTheme) => (prevTheme === 'dark' ? 'light' : 'dark'));
   };
 
+  const isDark = theme === 'dark';
+
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme, isDark: theme === 'dark' }}>
+    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme, isDark }}>
       {children}
     </ThemeContext.Provider>
   );
 };
 
+// Custom hook to use theme context anywhere in the app
 export const useTheme = () => {
   const context = useContext(ThemeContext);
   if (!context) {

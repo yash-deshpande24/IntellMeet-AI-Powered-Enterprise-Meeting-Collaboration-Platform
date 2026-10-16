@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { Input } from '../../components/common/Input';
@@ -10,14 +10,15 @@ import { Video, Mail, ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
 export const ForgotPasswordPage = () => {
   const { forgotPassword, loading } = useAuth();
   const { success, error } = useNotification();
-  const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState('');
 
+  // Handle forgot password request
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
       setFormError('Please enter a valid business email');
       return;
@@ -27,15 +28,16 @@ export const ForgotPasswordPage = () => {
     try {
       await forgotPassword(email);
       setSubmitted(true);
-      success('Password reset instructions dispatched to your email.');
+      success('Password reset instructions sent to your email.');
     } catch (err) {
-      error(err.message || 'Failed to dispatch reset email');
+      error(err.message || 'Failed to send reset email');
     }
   };
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 animate-fade-in">
+        {/* Brand Header */}
         <div className="text-center space-y-2">
           <Link to="/" className="inline-flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md">
@@ -53,6 +55,7 @@ export const ForgotPasswordPage = () => {
           </p>
         </div>
 
+        {/* Card Body */}
         <Card className="p-8 sm:p-10 shadow-xl">
           {submitted ? (
             <div className="text-center space-y-4 py-4">

@@ -5,7 +5,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
-import { Video, Eye, EyeOff, Lock, Mail, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Video, Eye, EyeOff, Lock, Mail, ArrowRight, Sparkles } from 'lucide-react';
 
 export const LoginPage = () => {
   const { login, loading } = useAuth();
@@ -13,33 +13,40 @@ export const LoginPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Form input states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [errors, setErrors] = useState({});
 
+  // Route destination after successful login
   const from = location.state?.from?.pathname || '/dashboard';
 
-  const validate = () => {
-    const errs = {};
+  // Basic form validation
+  const validateForm = () => {
+    const newErrors = {};
+
     if (!email.trim()) {
-      errs.email = 'Email address is required';
+      newErrors.email = 'Email address is required';
     } else if (!/\S+@\S+\.\S+/.test(email)) {
-      errs.email = 'Please provide a valid email format';
+      newErrors.email = 'Please provide a valid email format';
     }
+
     if (!password) {
-      errs.password = 'Password is required';
+      newErrors.password = 'Password is required';
     } else if (password.length < 6) {
-      errs.password = 'Password must be at least 6 characters';
+      newErrors.password = 'Password must be at least 6 characters';
     }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
+  // Submit login credentials
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validateForm()) return;
 
     try {
       await login(email, password, rememberMe);
@@ -50,12 +57,16 @@ export const LoginPage = () => {
     }
   };
 
+  // 1-Click demo login for instant testing
   const handleDemoLogin = async () => {
-    setEmail('alex.vance@innovatecorp.com');
-    setPassword('Enterprise2026!');
+    const demoEmail = 'alex.vance@innovatecorp.com';
+    const demoPassword = 'Password123!';
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+
     try {
-      await login('alex.vance@innovatecorp.com', 'Enterprise2026!', true);
-      success('Logged in with Demo Enterprise Admin profile');
+      await login(demoEmail, demoPassword, true);
+      success('Logged in with Demo Profile');
       navigate(from, { replace: true });
     } catch (err) {
       error('Demo login failed');
@@ -65,6 +76,7 @@ export const LoginPage = () => {
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 animate-fade-in">
+        {/* Brand Header */}
         <div className="text-center space-y-2">
           <Link to="/" className="inline-flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md">
@@ -104,8 +116,10 @@ export const LoginPage = () => {
           </button>
         </div>
 
+        {/* Login Form Card */}
         <Card className="p-8 sm:p-10 shadow-xl">
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Email Input */}
             <Input
               label="Work Email"
               type="email"
@@ -117,6 +131,7 @@ export const LoginPage = () => {
               autoComplete="email"
             />
 
+            {/* Password Input */}
             <div>
               <Input
                 label="Password"
@@ -137,6 +152,8 @@ export const LoginPage = () => {
                 error={errors.password}
                 autoComplete="current-password"
               />
+
+              {/* Remember Me & Forgot Password Links */}
               <div className="flex items-center justify-between mt-3 text-xs">
                 <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600 dark:text-slate-400">
                   <input
@@ -156,6 +173,7 @@ export const LoginPage = () => {
               </div>
             </div>
 
+            {/* Submit Button */}
             <Button
               type="submit"
               variant="gradient"
@@ -168,6 +186,7 @@ export const LoginPage = () => {
             </Button>
           </form>
 
+          {/* Sign Up Redirect Link */}
           <div className="mt-6 pt-6 border-t border-slate-100 dark:border-dark-border text-center">
             <p className="text-xs text-slate-600 dark:text-slate-400">
               Don't have an enterprise account yet?{' '}

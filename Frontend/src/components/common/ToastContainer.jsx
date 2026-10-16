@@ -2,11 +2,14 @@ import React from 'react';
 import { useNotification } from '../../context/NotificationContext';
 import { CheckCircle2, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';
 
+// Container component for floating toast notifications
 export const ToastContainer = () => {
   const { toasts, removeToast } = useNotification();
 
+  // If there are no toasts, render nothing
   if (!toasts.length) return null;
 
+  // Icon mapping for each notification type
   const icons = {
     success: <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />,
     error: <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0" />,
@@ -14,6 +17,7 @@ export const ToastContainer = () => {
     info: <Info className="w-5 h-5 text-indigo-500 flex-shrink-0" />,
   };
 
+  // Colored left border accents
   const borderAccents = {
     success: 'border-l-4 border-l-emerald-500',
     error: 'border-l-4 border-l-rose-500',
@@ -26,9 +30,14 @@ export const ToastContainer = () => {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`pointer-events-auto flex items-start gap-3 p-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-xl shadow-xl animate-slide-up ${borderAccents[toast.type] || borderAccents.info}`}
+          className={`pointer-events-auto flex items-start gap-3 p-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-xl shadow-xl animate-slide-up ${
+            borderAccents[toast.type] || borderAccents.info
+          }`}
         >
+          {/* Notification Icon */}
           {icons[toast.type] || icons.info}
+
+          {/* Title and Message */}
           <div className="flex-1 min-w-0">
             {toast.title && (
               <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
@@ -39,9 +48,12 @@ export const ToastContainer = () => {
               {toast.message}
             </p>
           </div>
+
+          {/* Close button */}
           <button
             onClick={() => removeToast(toast.id)}
             className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+            aria-label="Close notification"
           >
             <X className="w-4 h-4" />
           </button>
