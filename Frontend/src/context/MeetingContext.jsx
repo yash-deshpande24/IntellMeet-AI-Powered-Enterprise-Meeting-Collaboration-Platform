@@ -1,20 +1,26 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
+// Create Meeting Context
 const MeetingContext = createContext();
 
 export const MeetingProvider = ({ children }) => {
+  // Audio, video, and screen sharing states
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
-  const [activeTab, setActiveTab] = useState(null); // 'chat' | 'participants' | 'ai' | null
+
+  // Active side panel tab ('chat' | 'participants' | 'ai' | null)
+  const [activeTab, setActiveTab] = useState(null);
   const [activeSpeaker, setActiveSpeaker] = useState('David Miller');
 
-  const [selectedAudioInput, setSelectedAudioInput] = useState('Default - Studio Microphone (Elgato Wave:3)');
-  const [selectedAudioOutput, setSelectedAudioOutput] = useState('Default - Spatial Audio Speakers (High Definition)');
-  const [selectedVideoInput, setSelectedVideoInput] = useState('Integrated UltraHD 4K Brio Webcam');
+  // Selected hardware devices
+  const [selectedAudioInput, setSelectedAudioInput] = useState('Default - Studio Microphone');
+  const [selectedAudioOutput, setSelectedAudioOutput] = useState('Default - Speakers / Headphones');
+  const [selectedVideoInput, setSelectedVideoInput] = useState('Integrated HD Webcam');
 
+  // Meeting participants list
   const [participants, setParticipants] = useState([
     {
       id: 'p-1',
@@ -54,6 +60,7 @@ export const MeetingProvider = ({ children }) => {
     },
   ]);
 
+  // In-meeting chat messages
   const [chatMessages, setChatMessages] = useState([
     {
       id: 'cm-1',
@@ -71,69 +78,85 @@ export const MeetingProvider = ({ children }) => {
     },
   ]);
 
+  // Floating emoji reactions
   const [activeReactions, setActiveReactions] = useState([]);
 
-  // Periodic active speaker toggle to simulate live conversation
+  // Switch active speaker periodically to simulate real meeting dynamics
   useEffect(() => {
-    const speakers = ['David Miller', 'Elena Rostova', 'Alex Vance (You)'];
-    let idx = 0;
+    const speakerList = ['David Miller', 'Elena Rostova', 'Alex Vance (You)'];
+    let index = 0;
+
     const interval = setInterval(() => {
-      idx = (idx + 1) % speakers.length;
-      setActiveSpeaker(speakers[idx]);
+      index = (index + 1) % speakerList.length;
+      setActiveSpeaker(speakerList[index]);
     }, 9000);
+
     return () => clearInterval(interval);
   }, []);
 
+  // Toggle microphone
   const toggleMic = () => {
-    setIsMicOn(prev => {
-      const next = !prev;
-      setParticipants(curr =>
-        curr.map(p => (p.id === 'p-1' ? { ...p, isMicOn: next } : p))
+    setIsMicOn((prev) => {
+      const nextState = !prev;
+      setParticipants((list) =>
+        list.map((p) => (p.id === 'p-1' ? { ...p, isMicOn: nextState } : p))
       );
-      return next;
+      return nextState;
     });
   };
 
+  // Toggle camera
   const toggleCamera = () => {
-    setIsCameraOn(prev => {
-      const next = !prev;
-      setParticipants(curr =>
-        curr.map(p => (p.id === 'p-1' ? { ...p, isCameraOn: next } : p))
+    setIsCameraOn((prev) => {
+      const nextState = !prev;
+      setParticipants((list) =>
+        list.map((p) => (p.id === 'p-1' ? { ...p, isCameraOn: nextState } : p))
       );
-      return next;
+      return nextState;
     });
   };
 
+  // Toggle screen share
   const toggleScreenSharing = () => {
-    setIsScreenSharing(prev => !prev);
+    setIsScreenSharing((prev) => !prev);
   };
 
+  // Toggle recording
   const toggleRecording = () => {
-    setIsRecording(prev => !prev);
+    setIsRecording((prev) => !prev);
   };
 
+  // Toggle raise hand
   const toggleRaiseHand = () => {
-    setIsHandRaised(prev => !prev);
+    setIsHandRaised((prev) => !prev);
   };
 
+  // Send emoji reaction
   const sendReaction = (emoji) => {
-    const id = Date.now() + Math.random();
-    setActiveReactions(prev => [...prev, { id, emoji, x: 40 + Math.random() * 20 }]);
+    const reactionId = Date.now();
+    const xPos = 40 + Math.random() * 20;
+
+    setActiveReactions((prev) => [...prev, { id: reactionId, emoji, x: xPos }]);
+
+    // Remove reaction after 2.5 seconds
     setTimeout(() => {
-      setActiveReactions(prev => prev.filter(r => r.id !== id));
+      setActiveReactions((prev) => prev.filter((r) => r.id !== reactionId));
     }, 2500);
   };
 
+  // Send a chat message
   const sendChatMessage = (text) => {
     if (!text.trim()) return;
+
     const newMsg = {
       id: 'cm-' + Date.now(),
       sender: 'Alex Vance (You)',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      text,
+      text: text.trim(),
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
-    setChatMessages(prev => [...prev, newMsg]);
+
+    setChatMessages((prev) => [...prev, newMsg]);
   };
 
   return (
@@ -170,6 +193,7 @@ export const MeetingProvider = ({ children }) => {
   );
 };
 
+// Custom hook to use meeting context
 export const useMeeting = () => {
   const context = useContext(MeetingContext);
   if (!context) {

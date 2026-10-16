@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// Base Axios instance ready for future MERN backend connection
+// Base Axios instance for API requests
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
   timeout: 10000,
@@ -9,7 +9,7 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to attach JWT token
+// Attach authorization token to outgoing requests
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('intellmeet_token');
@@ -18,19 +18,20 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error);
+  }
 );
 
-// Response interceptor with graceful error extraction
+// Handle response errors cleanly
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response;
+  },
   (error) => {
-    const customError = {
-      message: error.response?.data?.message || error.message || 'An unexpected error occurred',
-      status: error.response?.status,
-      data: error.response?.data,
-    };
-    return Promise.reject(customError);
+    const message =
+      error.response?.data?.message || error.message || 'An unexpected error occurred';
+    return Promise.reject(new Error(message));
   }
 );
 

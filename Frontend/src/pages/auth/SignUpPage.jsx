@@ -5,13 +5,14 @@ import { useNotification } from '../../context/NotificationContext';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
-import { Video, Eye, EyeOff, Lock, Mail, User, ArrowRight, ShieldCheck, Check } from 'lucide-react';
+import { Video, Eye, EyeOff, Lock, Mail, User, ArrowRight } from 'lucide-react';
 
 export const SignUpPage = () => {
   const { signup, loading } = useAuth();
   const { success, error } = useNotification();
   const navigate = useNavigate();
 
+  // Registration form state
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -19,56 +20,75 @@ export const SignUpPage = () => {
     confirmPassword: '',
     termsAccepted: false,
   });
+
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const calculatePasswordStrength = (pass) => {
+  // Calculate password strength score (0 to 4)
+  const getPasswordStrength = (pass) => {
     if (!pass) return 0;
     let score = 0;
-    if (pass.length >= 8) score += 1;
-    if (/[A-Z]/.test(pass)) score += 1;
-    if (/[0-9]/.test(pass)) score += 1;
-    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
+    if (pass.length >= 8) score++;
+    if (/[A-Z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
     return score;
   };
 
-  const strength = calculatePasswordStrength(formData.password);
+  const strength = getPasswordStrength(formData.password);
 
-  const getStrengthLabel = () => {
+  // Return label and color based on strength score
+  const getStrengthDisplay = () => {
     switch (strength) {
-      case 0: return { label: 'Empty', color: 'bg-slate-200' };
-      case 1: return { label: 'Weak', color: 'bg-rose-500' };
-      case 2: return { label: 'Fair', color: 'bg-amber-500' };
-      case 3: return { label: 'Good', color: 'bg-indigo-500' };
-      case 4: return { label: 'Strong', color: 'bg-emerald-500' };
-      default: return { label: 'Fair', color: 'bg-amber-500' };
+      case 0:
+        return { label: 'Empty', color: 'bg-slate-200' };
+      case 1:
+        return { label: 'Weak', color: 'bg-rose-500' };
+      case 2:
+        return { label: 'Fair', color: 'bg-amber-500' };
+      case 3:
+        return { label: 'Good', color: 'bg-indigo-500' };
+      case 4:
+        return { label: 'Strong', color: 'bg-emerald-500' };
+      default:
+        return { label: 'Fair', color: 'bg-amber-500' };
     }
   };
 
-  const validate = () => {
-    const errs = {};
-    if (!formData.name.trim()) errs.name = 'Full name is required';
+  // Validate form fields
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.name.trim()) {
+      newErrors.name = 'Full name is required';
+    }
+
     if (!formData.email.trim() || !/\S+@\S+\.\S+/.test(formData.email)) {
-      errs.email = 'Valid work email is required';
+      newErrors.email = 'Valid work email is required';
     }
+
     if (!formData.password) {
-      errs.password = 'Password is required';
+      newErrors.password = 'Password is required';
     } else if (formData.password.length < 8) {
-      errs.password = 'Password must be at least 8 characters';
+      newErrors.password = 'Password must be at least 8 characters';
     }
+
     if (formData.password !== formData.confirmPassword) {
-      errs.confirmPassword = 'Passwords do not match';
+      newErrors.confirmPassword = 'Passwords do not match';
     }
+
     if (!formData.termsAccepted) {
-      errs.terms = 'You must accept the terms of service';
+      newErrors.terms = 'You must accept the terms of service';
     }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
+  // Form submission handler
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validateForm()) return;
 
     try {
       await signup({
@@ -76,7 +96,7 @@ export const SignUpPage = () => {
         email: formData.email,
         password: formData.password,
       });
-      success('Enterprise account created! Redirecting to email verification.');
+      success('Account created! Please verify your email.');
       navigate('/verify-email', { state: { email: formData.email } });
     } catch (err) {
       error(err.message || 'Failed to register account');
@@ -86,6 +106,7 @@ export const SignUpPage = () => {
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 animate-fade-in">
+        {/* Brand Header */}
         <div className="text-center space-y-2">
           <Link to="/" className="inline-flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md">
@@ -103,8 +124,10 @@ export const SignUpPage = () => {
           </p>
         </div>
 
+        {/* Signup Form Card */}
         <Card className="p-8 sm:p-10 shadow-xl">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Full Name */}
             <Input
               label="Full Name"
               placeholder="e.g. Elena Rostova"
@@ -114,6 +137,7 @@ export const SignUpPage = () => {
               error={errors.name}
             />
 
+            {/* Work Email */}
             <Input
               label="Work Email"
               type="email"
@@ -124,6 +148,7 @@ export const SignUpPage = () => {
               error={errors.email}
             />
 
+            {/* Password */}
             <div>
               <Input
                 label="Password"
@@ -143,13 +168,14 @@ export const SignUpPage = () => {
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 error={errors.password}
               />
+
               {/* Password Strength Indicator */}
               {formData.password && (
                 <div className="mt-2 space-y-1">
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-500 dark:text-slate-400">Password strength:</span>
                     <span className="font-bold text-slate-700 dark:text-slate-300">
-                      {getStrengthLabel().label}
+                      {getStrengthDisplay().label}
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-slate-100 dark:bg-dark-surface rounded-full overflow-hidden flex gap-1">
@@ -157,7 +183,7 @@ export const SignUpPage = () => {
                       <div
                         key={step}
                         className={`h-full flex-1 transition-all duration-300 ${
-                          strength >= step ? getStrengthLabel().color : 'bg-transparent'
+                          strength >= step ? getStrengthDisplay().color : 'bg-transparent'
                         }`}
                       />
                     ))}
@@ -166,6 +192,7 @@ export const SignUpPage = () => {
               )}
             </div>
 
+            {/* Confirm Password */}
             <Input
               label="Confirm Password"
               type={showPassword ? 'text' : 'password'}
@@ -176,7 +203,7 @@ export const SignUpPage = () => {
               error={errors.confirmPassword}
             />
 
-            {/* Terms Checkbox */}
+            {/* Terms of Service Checkbox */}
             <div className="pt-2">
               <label className="flex items-start gap-2.5 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-400">
                 <input
@@ -202,6 +229,7 @@ export const SignUpPage = () => {
               )}
             </div>
 
+            {/* Submit Button */}
             <Button
               type="submit"
               variant="gradient"
@@ -214,6 +242,7 @@ export const SignUpPage = () => {
             </Button>
           </form>
 
+          {/* Already have an account link */}
           <div className="mt-6 pt-6 border-t border-slate-100 dark:border-dark-border text-center">
             <p className="text-xs text-slate-600 dark:text-slate-400">
               Already have an enterprise account?{' '}

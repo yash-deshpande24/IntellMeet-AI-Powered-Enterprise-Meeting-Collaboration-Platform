@@ -1,25 +1,31 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { currentUser as initialMockUser } from '../data/mockData';
+import { currentUser as defaultMockUser } from '../data/mockData';
 
+// Create Authentication Context
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
+  // Load saved user from localStorage or use initial default mock user
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('intellmeet_user');
-    if (saved) {
+    const savedUser = localStorage.getItem('intellmeet_user');
+    if (savedUser) {
       try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return initialMockUser;
+        return JSON.parse(savedUser);
+      } catch (err) {
+        console.error('Failed to parse saved user:', err);
+        return defaultMockUser;
       }
     }
-    // Default to mock logged in user for immediate seamless evaluation
-    return initialMockUser;
+    return defaultMockUser;
   });
 
-  const [token, setToken] = useState(() => localStorage.getItem('intellmeet_token') || 'mock_enterprise_jwt_token_2026');
+  const [token, setToken] = useState(() => {
+    return localStorage.getItem('intellmeet_token') || 'mock-jwt-token-alex';
+  });
+
   const [loading, setLoading] = useState(false);
 
+  // Sync user state changes with localStorage
   useEffect(() => {
     if (user) {
       localStorage.setItem('intellmeet_user', JSON.stringify(user));
@@ -29,45 +35,71 @@ export const AuthProvider = ({ children }) => {
     }
   }, [user]);
 
-  const login = async (email, password, rememberMe = true) => {
-    setLoading(true);
-    // Simulate API network roundtrip
-    await new Promise((res) => setTimeout(res, 800));
-    const loggedUser = {
-      ...initialMockUser,
-      email: email || initialMockUser.email,
-      name: email.split('@')[0].replace('.', ' ').replace(/(^|\s)\S/g, l => l.toUpperCase()) || initialMockUser.name,
-    };
-    const mockToken = 'jwt_' + Math.random().toString(36).substring(2);
-    setUser(loggedUser);
-    setToken(mockToken);
-    if (rememberMe) {
-      localStorage.setItem('intellmeet_token', mockToken);
-      localStorage.setItem('intellmeet_user', JSON.stringify(loggedUser));
-    }
-    setLoading(false);
-    return { success: true, user: loggedUser };
+  // Helper function to create a readable name from email
+  const getNameFromEmail = (email) => {
+    if (!email) return defaultMockUser.name;
+    const namePart = email.split('@')[0];
+    return namePart
+      .split('.')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   };
 
+  // Login handler
+  const login = async (email, password, rememberMe = true) => {
+    setLoading(true);
+
+    // Simulate API request delay
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    const loggedInUser = {
+      ...defaultMockUser,
+      email: email || defaultMockUser.email,
+      name: getNameFromEmail(email),
+    };
+
+    const generatedToken = 'jwt-token-' + Date.now();
+
+    setUser(loggedInUser);
+    setToken(generatedToken);
+
+    if (rememberMe) {
+      localStorage.setItem('intellmeet_token', generatedToken);
+      localStorage.setItem('intellmeet_user', JSON.stringify(loggedInUser));
+    }
+
+    setLoading(false);
+    return { success: true, user: loggedInUser };
+  };
+
+  // Sign up handler
   const signup = async ({ name, email, password }) => {
     setLoading(true);
-    await new Promise((res) => setTimeout(res, 900));
+
+    // Simulate API request delay
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
     const newUser = {
-      ...initialMockUser,
-      id: 'usr_' + Date.now(),
-      name,
-      email,
+      ...defaultMockUser,
+      id: 'usr-' + Date.now(),
+      name: name || 'New User',
+      email: email,
       role: 'Enterprise Member',
     };
-    const mockToken = 'jwt_' + Math.random().toString(36).substring(2);
+
+    const generatedToken = 'jwt-token-' + Date.now();
+
     setUser(newUser);
-    setToken(mockToken);
-    localStorage.setItem('intellmeet_token', mockToken);
+    setToken(generatedToken);
+
+    localStorage.setItem('intellmeet_token', generatedToken);
     localStorage.setItem('intellmeet_user', JSON.stringify(newUser));
+
     setLoading(false);
     return { success: true, user: newUser };
   };
 
+  // Logout handler
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -75,32 +107,36 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('intellmeet_token');
   };
 
+  // Forgot password request
   const forgotPassword = async (email) => {
     setLoading(true);
-    await new Promise((res) => setTimeout(res, 700));
+    await new Promise((resolve) => setTimeout(resolve, 700));
     setLoading(false);
-    return { success: true, message: `Password reset instructions sent to ${email}` };
+    return { success: true, message: `Password reset link sent to ${email}` };
   };
 
+  // Reset password handler
   const resetPassword = async (newPassword) => {
     setLoading(true);
-    await new Promise((res) => setTimeout(res, 800));
+    await new Promise((resolve) => setTimeout(resolve, 800));
     setLoading(false);
-    return { success: true, message: 'Password has been successfully updated' };
+    return { success: true, message: 'Password has been updated successfully' };
   };
 
+  // Verify email code
   const verifyEmail = async (code) => {
     setLoading(true);
-    await new Promise((res) => setTimeout(res, 600));
+    await new Promise((resolve) => setTimeout(resolve, 600));
     setLoading(false);
-    return { success: true, message: 'Email address verified successfully' };
+    return { success: true, message: 'Email verified successfully' };
   };
 
+  // Update user profile fields
   const updateProfile = (fields) => {
-    setUser((prev) => {
-      const updated = { ...prev, ...fields };
-      localStorage.setItem('intellmeet_user', JSON.stringify(updated));
-      return updated;
+    setUser((prevUser) => {
+      const updatedUser = { ...prevUser, ...fields };
+      localStorage.setItem('intellmeet_user', JSON.stringify(updatedUser));
+      return updatedUser;
     });
   };
 
@@ -125,6 +161,7 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
+// Custom hook to use auth context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

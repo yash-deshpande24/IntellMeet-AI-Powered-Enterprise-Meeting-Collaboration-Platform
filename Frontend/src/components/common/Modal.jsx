@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 
+// Reusable Modal Dialog with backdrop blur and Escape key handler
 export const Modal = ({
   isOpen,
   onClose,
@@ -10,25 +11,31 @@ export const Modal = ({
   maxWidth = 'max-w-lg',
   showClose = true,
 }) => {
+  // Close modal when user presses Escape key
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+      }
     };
+
     if (isOpen) {
       document.body.style.overflow = 'hidden';
       window.addEventListener('keydown', handleKeyDown);
     }
+
     return () => {
       document.body.style.overflow = 'unset';
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, onClose]);
 
+  // Return null if modal is closed
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-      {/* Backdrop */}
+      {/* Backdrop overlay */}
       <div
         className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-200"
         onClick={onClose}
@@ -64,6 +71,8 @@ export const Modal = ({
             )}
           </div>
         )}
+
+        {/* Modal Body */}
         <div className="px-6 py-5 max-h-[80vh] overflow-y-auto">
           {children}
         </div>

@@ -24,7 +24,6 @@ import {
   Menu,
   X,
   PlusCircle,
-  VideoOff,
   History,
   Bot,
   ExternalLink,
@@ -40,12 +39,14 @@ export const DashboardLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Sidebar and UI states
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Sidebar navigation menu configuration
   const navGroups = [
     {
       title: 'Core Platform',
@@ -78,19 +79,21 @@ export const DashboardLayout = () => {
     {
       title: 'Enterprise Settings',
       items: [
-        { label: 'My Profile', icon: Avatar, path: '/settings/profile', isAvatar: true },
+        { label: 'My Profile', icon: Avatar, path: '/settings/profile' },
         { label: 'Preferences & Devices', icon: Settings, path: '/settings/preferences' },
         { label: 'Security & 2FA', icon: Shield, path: '/settings/security' },
       ],
     },
   ];
 
+  // Logout handler
   const handleLogout = () => {
     logout();
     info('Logged out successfully');
     navigate('/login');
   };
 
+  // Search form submit
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     if (searchQuery.trim()) {
@@ -98,14 +101,19 @@ export const DashboardLayout = () => {
     }
   };
 
+  // Helper to determine if a route is active
   const isActive = (path) => {
-    if (path === '/dashboard') return location.pathname === '/dashboard';
+    if (path === '/dashboard') {
+      return location.pathname === '/dashboard';
+    }
     return location.pathname.startsWith(path);
   };
 
   return (
     <div className="min-h-screen flex bg-slate-50 dark:bg-dark-bg text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      {/* Desktop Sidebar */}
+      {/* ========================================= */}
+      {/* DESKTOP SIDEBAR                           */}
+      {/* ========================================= */}
       <aside
         className={`hidden lg:flex flex-col border-r border-slate-200 dark:border-dark-border bg-white dark:bg-dark-card transition-all duration-300 z-30 sticky top-0 h-screen ${
           sidebarCollapsed ? 'w-20' : 'w-64'
@@ -133,7 +141,11 @@ export const DashboardLayout = () => {
             className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-dark-surface"
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${sidebarCollapsed ? '' : 'rotate-180'}`} />
+            <ChevronRight
+              className={`w-4 h-4 transition-transform duration-200 ${
+                sidebarCollapsed ? '' : 'rotate-180'
+              }`}
+            />
           </button>
         </div>
 
@@ -157,7 +169,7 @@ export const DashboardLayout = () => {
           </div>
         )}
 
-        {/* Navigation Items */}
+        {/* Navigation Links Grouped by Section */}
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
           {navGroups.map((group, gIdx) => (
             <div key={gIdx} className="space-y-1">
@@ -181,7 +193,11 @@ export const DashboardLayout = () => {
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-surface'
                     }`}
                   >
-                    <IconComponent className={`w-4 h-4 flex-shrink-0 ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                    <IconComponent
+                      className={`w-4 h-4 flex-shrink-0 ${
+                        active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
+                      }`}
+                    />
                     {!sidebarCollapsed && (
                       <span className="truncate flex-1">{item.label}</span>
                     )}
@@ -201,7 +217,7 @@ export const DashboardLayout = () => {
           ))}
         </div>
 
-        {/* User Workspace Profile Card */}
+        {/* User Workspace Profile Card at Sidebar Bottom */}
         <div className="p-3 border-t border-slate-100 dark:border-dark-border bg-slate-50/50 dark:bg-dark-surface/50">
           <div className="flex items-center gap-3">
             <Avatar src={user?.avatar} name={user?.name} size="sm" status="online" />
@@ -228,7 +244,9 @@ export const DashboardLayout = () => {
         </div>
       </aside>
 
-      {/* Mobile Drawer Backdrop & Sidebar */}
+      {/* ========================================= */}
+      {/* MOBILE DRAWER SIDEBAR                     */}
+      {/* ========================================= */}
       {mobileSidebarOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex">
           <div
@@ -296,11 +314,13 @@ export const DashboardLayout = () => {
         </div>
       )}
 
-      {/* Main Content Area */}
+      {/* ========================================= */}
+      {/* MAIN CONTENT AREA & TOP NAVBAR            */}
+      {/* ========================================= */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Navigation Bar */}
+        {/* Top Header Navigation Bar */}
         <header className="sticky top-0 z-20 h-16 glass-nav border-b border-slate-200/80 dark:border-dark-border px-4 sm:px-6 flex items-center justify-between gap-4">
-          {/* Mobile Menu Toggle & Brand */}
+          {/* Mobile Menu Button & Breadcrumb */}
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileSidebarOpen(true)}
@@ -317,7 +337,7 @@ export const DashboardLayout = () => {
             </div>
           </div>
 
-          {/* Global Search Input */}
+          {/* Search Bar */}
           <form onSubmit={handleSearchSubmit} className="flex-1 max-w-md hidden md:block">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
@@ -331,7 +351,7 @@ export const DashboardLayout = () => {
             </div>
           </form>
 
-          {/* Header Actions */}
+          {/* Top Actions: Schedule, Theme, Notifications, Profile */}
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Quick Schedule Button */}
             <Link to="/meetings/schedule" className="hidden sm:inline-flex">
@@ -341,7 +361,7 @@ export const DashboardLayout = () => {
               </button>
             </Link>
 
-            {/* Theme Toggle Button */}
+            {/* Dark / Light Mode Toggle */}
             <button
               onClick={toggleTheme}
               className="p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-dark-surface"
@@ -350,7 +370,7 @@ export const DashboardLayout = () => {
               {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
             </button>
 
-            {/* Notification Bell with Dropdown */}
+            {/* Notifications Dropdown */}
             <div className="relative">
               <button
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
@@ -402,7 +422,7 @@ export const DashboardLayout = () => {
               )}
             </div>
 
-            {/* User Profile Menu Dropdown */}
+            {/* Profile Dropdown Menu */}
             <div className="relative">
               <button
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
@@ -466,13 +486,15 @@ export const DashboardLayout = () => {
           </div>
         </header>
 
-        {/* Content Outlet */}
+        {/* Dynamic Nested Route Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto pb-20 lg:pb-8">
           <Outlet />
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation Bar */}
+      {/* ========================================= */}
+      {/* MOBILE BOTTOM NAVIGATION BAR              */}
+      {/* ========================================= */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-white/95 dark:bg-dark-card/95 backdrop-blur-md border-t border-slate-200 dark:border-dark-border z-30 px-2 py-1.5 flex items-center justify-around">
         <Link
           to="/dashboard"

@@ -1,5 +1,6 @@
 import React, { forwardRef } from 'react';
 
+// Reusable Form Input with label, error message, helper text, and icons
 export const Input = forwardRef(({
   label,
   error,
@@ -11,10 +12,12 @@ export const Input = forwardRef(({
   id,
   ...props
 }, ref) => {
+  // Generate input ID if not provided
   const inputId = id || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
 
   return (
     <div className="w-full space-y-1.5">
+      {/* Label */}
       {label && (
         <label
           htmlFor={inputId}
@@ -23,12 +26,17 @@ export const Input = forwardRef(({
           {label}
         </label>
       )}
+
+      {/* Input container */}
       <div className="relative rounded-xl shadow-sm">
+        {/* Optional Left Icon */}
         {LeftIcon && (
           <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
             <LeftIcon className="w-4 h-4" />
           </div>
         )}
+
+        {/* Input field */}
         <input
           ref={ref}
           id={inputId}
@@ -43,17 +51,23 @@ export const Input = forwardRef(({
             disabled:opacity-50 disabled:bg-slate-50 dark:disabled:bg-slate-900 ${className}`}
           {...props}
         />
+
+        {/* Optional Right Icon / Action */}
         {RightIcon && (
           <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 dark:text-slate-500">
             {RightIcon}
           </div>
         )}
       </div>
+
+      {/* Validation Error Message */}
       {error && (
         <p className="text-xs text-rose-500 font-medium flex items-center gap-1 mt-1">
           {error}
         </p>
       )}
+
+      {/* Helper Text */}
       {helperText && !error && (
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
           {helperText}
