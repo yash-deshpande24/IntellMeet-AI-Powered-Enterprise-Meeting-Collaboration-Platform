@@ -5,41 +5,50 @@ import { useNotification } from '../../context/NotificationContext';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
-import { Video, Lock, Eye, EyeOff, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Video, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 
 export const ResetPasswordPage = () => {
   const { resetPassword, loading } = useAuth();
   const { success, error } = useNotification();
   const navigate = useNavigate();
 
+  // Reset password form fields
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const validate = () => {
-    const errs = {};
-    if (!code.trim()) errs.code = 'Security code is required';
+  // Form validation
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!code.trim()) {
+      newErrors.code = 'Security code is required';
+    }
+
     if (!password) {
-      errs.password = 'New password is required';
+      newErrors.password = 'New password is required';
     } else if (password.length < 8) {
-      errs.password = 'Password must be at least 8 characters';
+      newErrors.password = 'Password must be at least 8 characters';
     }
+
     if (password !== confirmPassword) {
-      errs.confirmPassword = 'Passwords do not match';
+      newErrors.confirmPassword = 'Passwords do not match';
     }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
+  // Submit new password
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validateForm()) return;
 
     try {
       await resetPassword(password);
-      success('Password successfully reset! Please sign in with your new credentials.');
+      success('Password successfully reset! Please sign in with your new password.');
       navigate('/login');
     } catch (err) {
       error(err.message || 'Password reset failed');
@@ -49,6 +58,7 @@ export const ResetPasswordPage = () => {
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 animate-fade-in">
+        {/* Brand Header */}
         <div className="text-center space-y-2">
           <Link to="/" className="inline-flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md">
@@ -66,6 +76,7 @@ export const ResetPasswordPage = () => {
           </p>
         </div>
 
+        {/* Reset Password Form Card */}
         <Card className="p-8 sm:p-10 shadow-xl">
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input

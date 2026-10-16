@@ -1,5 +1,6 @@
 import React from 'react';
 
+// Reusable Card container component
 export const Card = ({
   children,
   className = '',
@@ -9,10 +10,13 @@ export const Card = ({
   ...props
 }) => {
   const baseClasses = 'rounded-2xl transition-all duration-200 border';
+
+  // Apply glassmorphism or default white/dark card styling
   const surfaceClasses = glass
     ? 'glass-card'
     : 'bg-white dark:bg-dark-card border-slate-200/80 dark:border-dark-border shadow-soft dark:shadow-soft-dark';
 
+  // Optional hover elevation
   const hoverClasses = hover
     ? 'hover:-translate-y-0.5 hover:shadow-lg dark:hover:border-indigo-500/40 hover:border-indigo-200 cursor-pointer'
     : '';

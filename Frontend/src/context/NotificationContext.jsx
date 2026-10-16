@@ -1,16 +1,20 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 
+// Create Notification Context
 const NotificationContext = createContext();
 
 export const NotificationProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
 
-  const addToast = useCallback(({ type = 'info', title, message, duration = 4000 }) => {
-    const id = Date.now() + Math.random().toString(36).substring(2, 9);
+  // Add a new toast notification
+  const addToast = ({ type = 'info', title = '', message = '', duration = 4000 }) => {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
     const newToast = { id, type, title, message };
-    
-    setToasts(prev => [...prev, newToast]);
 
+    // Append new toast to list
+    setToasts((prevToasts) => [...prevToasts, newToast]);
+
+    // Automatically remove toast after duration
     if (duration > 0) {
       setTimeout(() => {
         removeToast(id);
@@ -18,24 +22,48 @@ export const NotificationProvider = ({ children }) => {
     }
 
     return id;
-  }, []);
+  };
 
-  const removeToast = useCallback((id) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
+  // Remove toast by id
+  const removeToast = (id) => {
+    setToasts((prevToasts) => prevToasts.filter((toast) => toast.id !== id));
+  };
 
-  const success = useCallback((message, title = 'Success') => addToast({ type: 'success', title, message }), [addToast]);
-  const error = useCallback((message, title = 'Error') => addToast({ type: 'error', title, message }), [addToast]);
-  const info = useCallback((message, title = 'Notice') => addToast({ type: 'info', title, message }), [addToast]);
-  const warning = useCallback((message, title = 'Warning') => addToast({ type: 'warning', title, message }), [addToast]);
+  // Helper shortcuts for common alert types
+  const success = (message, title = 'Success') => {
+    return addToast({ type: 'success', title, message });
+  };
+
+  const error = (message, title = 'Error') => {
+    return addToast({ type: 'error', title, message });
+  };
+
+  const info = (message, title = 'Notice') => {
+    return addToast({ type: 'info', title, message });
+  };
+
+  const warning = (message, title = 'Warning') => {
+    return addToast({ type: 'warning', title, message });
+  };
 
   return (
-    <NotificationContext.Provider value={{ toasts, addToast, removeToast, success, error, info, warning }}>
+    <NotificationContext.Provider
+      value={{
+        toasts,
+        addToast,
+        removeToast,
+        success,
+        error,
+        info,
+        warning,
+      }}
+    >
       {children}
     </NotificationContext.Provider>
   );
 };
 
+// Custom hook to use notifications
 export const useNotification = () => {
   const context = useContext(NotificationContext);
   if (!context) {
