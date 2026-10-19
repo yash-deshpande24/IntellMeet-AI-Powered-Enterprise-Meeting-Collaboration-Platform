@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { currentUser as defaultMockUser } from '../data/mockData';
+import { authService } from '../services/authService';
 
 // Create Authentication Context
 const AuthContext = createContext();
@@ -45,58 +46,101 @@ export const AuthProvider = ({ children }) => {
       .join(' ');
   };
 
-  // Login handler
+  // Login handler: tries backend API first, falls back gracefully to local mock on network failure or demo mode
   const login = async (email, password, rememberMe = true) => {
     setLoading(true);
 
-    // Simulate API request delay
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    const loggedInUser = {
-      ...defaultMockUser,
-      email: email || defaultMockUser.email,
-      name: getNameFromEmail(email),
-    };
-
-    const generatedToken = 'jwt-token-' + Date.now();
-
-    setUser(loggedInUser);
-    setToken(generatedToken);
-
-    if (rememberMe) {
-      localStorage.setItem('intellmeet_token', generatedToken);
-      localStorage.setItem('intellmeet_user', JSON.stringify(loggedInUser));
+    // Fast-path for 1-Click Demo Profile
+    if (email === 'alex.vance@innovatecorp.com' || email === 'demo@intellmeet.io') {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const demoUser = {
+        ...defaultMockUser,
+        email: email || defaultMockUser.email,
+        name: getNameFromEmail(email),
+      };
+      const demoToken = 'demo-jwt-token-enterprise';
+      setUser(demoUser);
+      setToken(demoToken);
+      if (rememberMe) {
+        localStorage.setItem('intellmeet_token', demoToken);
+        localStorage.setItem('intellmeet_user', JSON.stringify(demoUser));
+      }
+      setLoading(false);
+      return { success: true, user: demoUser };
     }
 
-    setLoading(false);
-    return { success: true, user: loggedInUser };
+    try {
+      // Connect to real backend /api/auth/login
+      const result = await authService.login(email, password);
+      if (result?.success && result?.token) {
+        setUser(result.user);
+        setToken(result.token);
+        if (rememberMe) {
+          localStorage.setItem('intellmeet_token', result.token);
+          localStorage.setItem('intellmeet_user', JSON.stringify(result.user));
+        }
+        setLoading(false);
+        return { success: true, user: result.user };
+      }
+    } catch (err) {
+      console.warn('[AuthContext] Backend auth unavailable or invalid, evaluating fallback mode:', err.message);
+      // If error is network related (e.g. backend server offline), allow graceful mock fallback
+      if (err.message.includes('Network Error') || err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
+        const fallbackUser = {
+          ...defaultMockUser,
+          email: email || defaultMockUser.email,
+          name: getNameFromEmail(email),
+        };
+        const fallbackToken = 'jwt-token-fallback-' + Date.now();
+        setUser(fallbackUser);
+        setToken(fallbackToken);
+        if (rememberMe) {
+          localStorage.setItem('intellmeet_token', fallbackToken);
+          localStorage.setItem('intellmeet_user', JSON.stringify(fallbackUser));
+        }
+        setLoading(false);
+        return { success: true, user: fallbackUser };
+      }
+      setLoading(false);
+      throw err;
+    }
   };
 
-  // Sign up handler
-  const signup = async ({ name, email, password }) => {
+  // Sign up handler: tries backend API first, falls back to local user on network failure
+  const signup = async ({ name, email, password, department, title }) => {
     setLoading(true);
 
-    // Simulate API request delay
-    await new Promise((resolve) => setTimeout(resolve, 900));
-
-    const newUser = {
-      ...defaultMockUser,
-      id: 'usr-' + Date.now(),
-      name: name || 'New User',
-      email: email,
-      role: 'Enterprise Member',
-    };
-
-    const generatedToken = 'jwt-token-' + Date.now();
-
-    setUser(newUser);
-    setToken(generatedToken);
-
-    localStorage.setItem('intellmeet_token', generatedToken);
-    localStorage.setItem('intellmeet_user', JSON.stringify(newUser));
-
-    setLoading(false);
-    return { success: true, user: newUser };
+    try {
+      const result = await authService.register({ name, email, password, department, title });
+      if (result?.success && result?.token) {
+        setUser(result.user);
+        setToken(result.token);
+        localStorage.setItem('intellmeet_token', result.token);
+        localStorage.setItem('intellmeet_user', JSON.stringify(result.user));
+        setLoading(false);
+        return { success: true, user: result.user };
+      }
+    } catch (err) {
+      console.warn('[AuthContext] Backend registration unavailable, using fallback:', err.message);
+      if (err.message.includes('Network Error') || err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
+        const newUser = {
+          ...defaultMockUser,
+          id: 'usr-' + Date.now(),
+          name: name || 'New User',
+          email: email,
+          role: 'Enterprise Member',
+        };
+        const generatedToken = 'jwt-token-' + Date.now();
+        setUser(newUser);
+        setToken(generatedToken);
+        localStorage.setItem('intellmeet_token', generatedToken);
+        localStorage.setItem('intellmeet_user', JSON.stringify(newUser));
+        setLoading(false);
+        return { success: true, user: newUser };
+      }
+      setLoading(false);
+      throw err;
+    }
   };
 
   // Logout handler
