@@ -1,5 +1,7 @@
 import express from 'express';
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -8,20 +10,23 @@ import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import { setupMeetingSocket } from './sockets/meetingSocket.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
-
+ 
 import authRoutes from './routes/authRoutes.js';
 import meetingRoutes from './routes/meetingRoutes.js';
 import taskRoutes from './routes/taskRoutes.js';
 import workspaceRoutes from './routes/workspaceRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
-
+ 
 import User from './models/User.js';
 import Workspace from './models/Workspace.js';
 import Meeting from './models/Meeting.js';
 import Task from './models/Task.js';
-
-dotenv.config();
-
+ 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+ 
+dotenv.config(); // shared defaults from Backend/.env
+dotenv.config({ path: path.join(__dirname, '../.env.local'), override: true }); // your private overrides (git-ignored)
+ 
 const isProduction = process.env.NODE_ENV === 'production';
 let httpsOrigin = process.env.HTTPS_ORIGIN;
 if (!process.env.JWT_SECRET) {
@@ -41,19 +46,19 @@ if (isProduction) {
     throw new Error('HTTPS_ORIGIN must be an HTTPS origin without a path in production.');
   }
 }
-
+ 
 const app = express();
 const server = http.createServer(app);
 if (isProduction) {
   const trustProxy = process.env.TRUST_PROXY || '1';
   app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
 }
-
+ 
 // Cross-Origin configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
   : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'];
-
+ 
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -61,7 +66,7 @@ const io = new Server(server, {
     credentials: true
   }
 });
-
+ 
 // Middleware
 app.use(helmet({
   hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true } : false,
@@ -82,20 +87,20 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(morgan('dev'));
-
+ 
 // Rate Limiting
 app.use('/api/', apiLimiter);
-
+ 
 // Setup WebRTC and Chat Socket
 setupMeetingSocket(io);
-
+ 
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/analytics', analyticsRoutes);
-
+ 
 // Health Check
 app.get('/api/health', (req, res) => {
   res.status(200).json({
@@ -111,7 +116,7 @@ app.get('/api/health', (req, res) => {
     }
   });
 });
-
+ 
 // Automatic Seed Function for Quick Demo & Evaluation
 const seedInitialData = async () => {
   try {
@@ -128,7 +133,7 @@ const seedInitialData = async () => {
         title: 'VP of Engineering',
         avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80'
       });
-
+ 
       const member = await User.create({
         name: 'Alex Rivera',
         email: 'member@intellmeet.io',
@@ -138,7 +143,7 @@ const seedInitialData = async () => {
         title: 'Lead Distributed Systems Engineer',
         avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
       });
-
+ 
       const workspace = await Workspace.create({
         name: 'Core Platform Engineering',
         description: 'Next-generation real-time WebRTC and AI meeting collaboration stream.',
@@ -151,7 +156,7 @@ const seedInitialData = async () => {
           { user: member._id, role: 'Member', name: member.name, email: member.email, avatar: member.avatar }
         ]
       });
-
+ 
       const sampleMeeting = await Meeting.create({
         title: 'Q3 Enterprise Architecture & AI Copilot Review',
         description: 'Quarterly review of WebRTC mesh stability, AI summarization pipeline, and Kanban integration.',
@@ -200,7 +205,7 @@ const seedInitialData = async () => {
           generatedAt: new Date()
         }
       });
-
+ 
       // Seed Initial Kanban Tasks
       await Task.create([
         {
@@ -265,22 +270,22 @@ const seedInitialData = async () => {
           tags: ['Security', 'Compliance']
         }
       ]);
-
+ 
       console.log('[Seed] Demo accounts & initial enterprise data populated successfully!');
     }
   } catch (err) {
     console.warn('[Seed] Notice on seeding:', err.message);
   }
 };
-
+ 
 const PORT = process.env.PORT || 5000;
-
+ 
 const startServer = async () => {
   const dbConnected = await connectDB();
   if (dbConnected && process.env.NODE_ENV === 'development') {
     await seedInitialData();
   }
-
+ 
   server.listen(PORT, () => {
     console.log(`====================================================`);
     console.log(`🚀 IntellMeet Enterprise Server running on port ${PORT}`);
@@ -289,5 +294,5 @@ const startServer = async () => {
     console.log(`====================================================`);
   });
 };
-
+ 
 startServer();
