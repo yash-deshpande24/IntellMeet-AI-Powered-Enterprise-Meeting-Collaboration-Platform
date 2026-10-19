@@ -33,14 +33,77 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
+import { meetingService } from '../../services/meetingService';
+import { taskService } from '../../services/taskService';
+
 export const DashboardOverview = () => {
   const { user } = useAuth();
   const { success, info } = useNotification();
   const navigate = useNavigate();
 
+  const [meetings, setMeetings] = useState(mockMeetings);
   const [actions, setActions] = useState(initialActions);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [joinMeetingId, setJoinMeetingId] = useState('');
+
+  // Fetch backend meetings and tasks with graceful fallback
+  React.useEffect(() => {
+    meetingService
+      .getMeetings()
+      .then((data) => {
+        if (data?.meetings && data.meetings.length > 0) {
+          const backendMapped = data.meetings.map((m) => ({
+            id: m._id,
+            code: m.roomCode,
+            title: m.title,
+            description: m.description,
+            status: m.status === 'active' ? 'ongoing' : (m.status === 'scheduled' ? 'upcoming' : 'completed'),
+            date: new Date(m.scheduledAt).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+            time: new Date(m.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            duration: `${m.duration || 30} min`,
+            host: {
+              name: m.hostName || m.host?.name || 'Enterprise Lead',
+              avatar: m.hostAvatar || m.host?.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+            },
+            participants: m.participants || [],
+            hasAiSummary: !!m.summary?.executiveSummary,
+            tags: m.summary?.tags || ['Enterprise', 'Sync'],
+            passcode: '904812',
+          }));
+
+          const existingCodes = new Set(backendMapped.map((b) => b.code));
+          const uniqueInitial = mockMeetings.filter((im) => !existingCodes.has(im.code));
+          setMeetings([...backendMapped, ...uniqueInitial]);
+        }
+      })
+      .catch(() => {});
+
+    taskService
+      .getTasks()
+      .then((data) => {
+        if (data?.tasks && data.tasks.length > 0) {
+          const mapped = data.tasks.map((t) => ({
+            id: t._id,
+            meetingId: t.meetingId?._id || 'custom',
+            meetingTitle: t.meetingId?.title || 'Platform Architecture Board',
+            title: t.title,
+            assignee: {
+              name: t.assignee || 'Alex Vance',
+              avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+            },
+            dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : '2026-10-24',
+            priority: t.priority ? t.priority.charAt(0).toUpperCase() + t.priority.slice(1) : 'Medium',
+            status: t.status === 'done' ? 'completed' : 'pending',
+            completed: t.status === 'done',
+          }));
+
+          const existingIds = new Set(mapped.map((m) => m.id));
+          const uniqueInitial = initialActions.filter((a) => !existingIds.has(a.id));
+          setActions([...mapped, ...uniqueInitial]);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const stats = [
     {
@@ -176,7 +239,7 @@ export const DashboardOverview = () => {
             </div>
 
             <div className="space-y-3.5">
-              {mockMeetings.slice(0, 3).map((meeting) => (
+              {meetings.slice(0, 3).map((meeting) => (
                 <Card
                   key={meeting.id}
                   className="p-5 transition-all hover:border-indigo-200 dark:hover:border-indigo-800"

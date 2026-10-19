@@ -7,7 +7,7 @@ export const initSocket = (token) => {
     const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
     socket = io(SOCKET_URL, {
       auth: { token },
-      autoConnect: false,
+      autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
@@ -18,8 +18,10 @@ export const initSocket = (token) => {
     });
 
     socket.on('connect_error', (err) => {
-      console.warn('[Socket.io] Connection simulated / pending backend:', err.message);
+      console.warn('[Socket.io] Connection pending backend:', err.message);
     });
+  } else if (!socket.connected) {
+    socket.connect();
   }
   return socket;
 };
