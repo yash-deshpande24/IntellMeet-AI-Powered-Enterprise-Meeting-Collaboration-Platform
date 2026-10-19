@@ -91,3 +91,31 @@ Creates an optimized production bundle inside the `dist/` directory.
 
 ## 🎨 Theme Support
 IntellMeet features automatic theme detection and manual toggle between Light Mode and Dark Mode. Themes are synchronized across all views and stored in `localStorage`.
+
+---
+
+## 🔗 Full-Stack Backend Integration & Architecture
+
+IntellMeet is built with an **Adaptive Dual-Mode Integration**:
+- **Live Mode:** Connects automatically to the Express + Socket.io backend (`http://localhost:5000`) for real JWT authentication, MongoDB persistence, live WebRTC socket mesh, real-time chat, floating reactions, and automated AI meeting summaries.
+- **Graceful Fallback Mode:** If the backend or MongoDB is offline, or when testing with 1-Click Demo profiles, the frontend transparently falls back to curated in-memory mock datasets without any UI interruptions or application errors.
+
+### Backend Endpoints Connected:
+- **Authentication (`/api/auth`):**
+  - `POST /login` & `POST /register`: JWT issue & verification.
+  - `GET /me`, `PUT /profile`, `POST /avatar`: User profile management.
+- **Meetings (`/api/meetings`):**
+  - `GET /` & `POST /`: Fetch meeting list and create new scheduled/instant conferences.
+  - `GET /code/:code` & `GET /:id`: Retrieve or ad-hoc initialize meeting rooms.
+  - `PATCH /:id/status`: Update meeting status (`active` / `completed`).
+  - `POST /:id/ai-summary`: Trigger automatic executive summary, action items & sentiment generation.
+  - `POST /:meetingId/action-items/:actionItemId/convert`: Convert meeting action items into Kanban workspace tasks.
+- **Kanban Tasks (`/api/tasks`):**
+  - `GET /`, `POST /`, `PATCH /:id/status`, `DELETE /:id`: Manage workspace tasks.
+- **Real-Time Sockets (`meetingSocket.js`):**
+  - `join-room`, `room-peers`, `user-joined`, `user-left`: Participant presence.
+  - `chat-message`, `typing`, `stop-typing`: Live in-meeting text channels.
+  - `media-toggle`, `screen-share-toggle`, `hand-raise-toggle`: Control states.
+  - `send-reaction`: Floating synchronized emoji animations.
+  - `ask-ai-copilot` & `ai-copilot-response`: In-meeting real-time AI assistant.
+

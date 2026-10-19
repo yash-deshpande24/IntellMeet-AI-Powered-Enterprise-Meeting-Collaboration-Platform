@@ -1,3 +1,4 @@
 node_modules/
 Frontend/dist/
 Backend/.env
+Frontend/.env
