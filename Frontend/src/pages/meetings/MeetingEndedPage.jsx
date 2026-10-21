@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { Card } from '../../components/common/Card';
@@ -6,38 +6,54 @@ import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { useNotification } from '../../context/NotificationContext';
 import {
-  Sparkles,
-  ArrowRight,
-  Clock,
-  Users,
-  Star,
-  CheckCircle2,
-  Share2,
-  Calendar,
-  Home,
-  FileText,
-} from 'lucide-react';
+  getMeetingByCode,
+  generateSummary,
+  updateMeetingStatus,
+} from '../../services/meetingService';
+import { Sparkles, ArrowRight, Star, CheckCircle2, Home } from 'lucide-react';
 
 export const MeetingEndedPage = () => {
-  const { id } = useParams();
+  const { id } = useParams(); // this is the room code
   const { success } = useNotification();
   const [rating, setRating] = useState(5);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
+  const [meeting, setMeeting] = useState(null);
+  const [status, setStatus] = useState('processing'); // processing | ready | error
+  const [errorMsg, setErrorMsg] = useState('');
+  const startedRef = useRef(false);
+
   useEffect(() => {
-    // Trigger celebratory confetti
-    confetti({
-      particleCount: 60,
-      spread: 70,
-      origin: { y: 0.6 },
-    });
+    confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
   }, []);
+
+  // Find the meeting, generate the AI summary, mark it completed
+  useEffect(() => {
+    if (startedRef.current) return; // avoid running twice in React StrictMode
+    startedRef.current = true;
+
+    const run = async () => {
+      try {
+        const found = await getMeetingByCode(id);
+        await generateSummary(found._id);
+        await updateMeetingStatus(found._id, 'completed').catch(() => {});
+        setMeeting(found);
+        setStatus('ready');
+      } catch (err) {
+        setErrorMsg(err.message);
+        setStatus('error');
+      }
+    };
+    run();
+  }, [id]);
 
   const handleRate = (stars) => {
     setRating(stars);
     setFeedbackSubmitted(true);
     success('Thank you! Meeting audio quality metrics logged.');
   };
+
+  const summaryLink = meeting ? `/ai/summaries/${meeting._id}` : '/ai/summaries';
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-dark-bg text-slate-900 dark:text-white flex items-center justify-center p-4 sm:p-6 animate-fade-in">
@@ -53,31 +69,45 @@ export const MeetingEndedPage = () => {
               You Have Left the Meeting
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-              Sprint 24 Architecture & WebRTC Sync (ID: {id || 'meet-102'})
+              {meeting ? meeting.title : 'Loading meeting...'} (Room: {id})
             </p>
           </div>
 
-          {/* Stats Bar */}
+          {/* Stats Bar (real data) */}
           <div className="grid grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-50 dark:bg-dark-surface border border-slate-200 dark:border-dark-border text-center">
             <div>
-              <p className="text-[11px] text-slate-400 uppercase font-semibold">Duration</p>
+              <p className="text-[11px] text-slate-400 uppercase font-semibold">Transcript</p>
               <p className="text-base font-extrabold text-slate-800 dark:text-white mt-0.5">
-                48 min
+                {meeting ? `${meeting.transcript?.length || 0} lines` : '...'}
               </p>
             </div>
             <div>
               <p className="text-[11px] text-slate-400 uppercase font-semibold">Attendees</p>
               <p className="text-base font-extrabold text-slate-800 dark:text-white mt-0.5">
-                4 People
+                {meeting ? `${meeting.participants?.length || 1} People` : '...'}
               </p>
             </div>
             <div>
               <p className="text-[11px] text-slate-400 uppercase font-semibold">AI Digest</p>
-              <p className="text-base font-extrabold text-emerald-500 mt-0.5">
-                Ready ✨
+              <p
+                className={`text-base font-extrabold mt-0.5 ${
+                  status === 'ready'
+                    ? 'text-emerald-500'
+                    : status === 'error'
+                    ? 'text-rose-500'
+                    : 'text-amber-500 animate-pulse'
+                }`}
+              >
+                {status === 'ready' ? 'Ready ✨' : status === 'error' ? 'Failed' : 'Generating...'}
               </p>
             </div>
           </div>
+
+          {status === 'error' && (
+            <p className="text-xs text-rose-500">
+              Could not generate the summary: {errorMsg}. Make sure you are logged in with a real account.
+            </p>
+          )}
 
           {/* Rate Call Quality */}
           <div className="space-y-2 pt-1">
@@ -93,7 +123,9 @@ export const MeetingEndedPage = () => {
                 >
                   <Star
                     className={`w-6 h-6 ${
-                      star <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-700'
+                      star <= rating
+                        ? 'fill-amber-400 text-amber-400'
+                        : 'text-slate-300 dark:text-slate-700'
                     }`}
                   />
                 </button>
@@ -108,9 +140,16 @@ export const MeetingEndedPage = () => {
 
           {/* Key Actions */}
           <div className="pt-2 flex flex-col sm:flex-row gap-3">
-            <Link to="/ai/summaries" className="flex-1">
-              <Button variant="gradient" size="md" className="w-full" leftIcon={Sparkles} rightIcon={ArrowRight}>
-                View AI Summary
+            <Link to={summaryLink} className="flex-1">
+              <Button
+                variant="gradient"
+                size="md"
+                className="w-full"
+                leftIcon={Sparkles}
+                rightIcon={ArrowRight}
+                disabled={status === 'processing'}
+              >
+                {status === 'processing' ? 'Preparing summary...' : 'View AI Summary'}
               </Button>
             </Link>
             <Link to="/dashboard" className="flex-1">

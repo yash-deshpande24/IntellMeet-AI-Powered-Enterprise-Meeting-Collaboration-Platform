@@ -1,105 +1,72 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { currentUser as defaultMockUser } from '../data/mockData';
+import api from '../services/api';
 
-// Create Authentication Context
 const AuthContext = createContext();
 
-export const AuthProvider = ({ children }) => {
-  // Load saved user from localStorage or use initial default mock user
-  const [user, setUser] = useState(() => {
-    const savedUser = localStorage.getItem('intellmeet_user');
-    if (savedUser) {
-      try {
-        return JSON.parse(savedUser);
-      } catch (err) {
-        console.error('Failed to parse saved user:', err);
-        return defaultMockUser;
-      }
+// Tokens created by the old mock login are not real, so ignore them
+const isFakeToken = (t) => !t || t.startsWith('jwt-token-') || t.startsWith('mock-');
+
+const readSavedAuth = () => {
+  try {
+    const token = localStorage.getItem('intellmeet_token');
+    const user = JSON.parse(localStorage.getItem('intellmeet_user') || 'null');
+    if (isFakeToken(token) || !user) {
+      localStorage.removeItem('intellmeet_token');
+      localStorage.removeItem('intellmeet_user');
+      return { token: null, user: null };
     }
-    return defaultMockUser;
-  });
+    return { token, user };
+  } catch {
+    return { token: null, user: null };
+  }
+};
 
-  const [token, setToken] = useState(() => {
-    return localStorage.getItem('intellmeet_token') || 'mock-jwt-token-alex';
-  });
-
+export const AuthProvider = ({ children }) => {
+  const saved = readSavedAuth();
+  const [user, setUser] = useState(saved.user);
+  const [token, setToken] = useState(saved.token);
   const [loading, setLoading] = useState(false);
 
-  // Sync user state changes with localStorage
   useEffect(() => {
-    if (user) {
-      localStorage.setItem('intellmeet_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('intellmeet_user');
-      localStorage.removeItem('intellmeet_token');
-    }
+    if (user) localStorage.setItem('intellmeet_user', JSON.stringify(user));
+    else localStorage.removeItem('intellmeet_user');
   }, [user]);
 
-  // Helper function to create a readable name from email
-  const getNameFromEmail = (email) => {
-    if (!email) return defaultMockUser.name;
-    const namePart = email.split('@')[0];
-    return namePart
-      .split('.')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+  const saveSession = (newToken, newUser) => {
+    localStorage.setItem('intellmeet_token', newToken);
+    localStorage.setItem('intellmeet_user', JSON.stringify(newUser));
+    setToken(newToken);
+    setUser(newUser);
   };
 
-  // Login handler
-  const login = async (email, password, rememberMe = true) => {
+  // REAL login against the backend
+  const login = async (email, password) => {
     setLoading(true);
-
-    // Simulate API request delay
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    const loggedInUser = {
-      ...defaultMockUser,
-      email: email || defaultMockUser.email,
-      name: getNameFromEmail(email),
-    };
-
-    const generatedToken = 'jwt-token-' + Date.now();
-
-    setUser(loggedInUser);
-    setToken(generatedToken);
-
-    if (rememberMe) {
-      localStorage.setItem('intellmeet_token', generatedToken);
-      localStorage.setItem('intellmeet_user', JSON.stringify(loggedInUser));
+    try {
+      const res = await api.post('/auth/login', { email, password });
+      saveSession(res.data.token, res.data.user);
+      return { success: true, user: res.data.user };
+    } catch (err) {
+      return { success: false, message: err.message };
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-    return { success: true, user: loggedInUser };
   };
 
-  // Sign up handler
+  // REAL signup against the backend (password must be 8+ characters)
   const signup = async ({ name, email, password }) => {
     setLoading(true);
-
-    // Simulate API request delay
-    await new Promise((resolve) => setTimeout(resolve, 900));
-
-    const newUser = {
-      ...defaultMockUser,
-      id: 'usr-' + Date.now(),
-      name: name || 'New User',
-      email: email,
-      role: 'Enterprise Member',
-    };
-
-    const generatedToken = 'jwt-token-' + Date.now();
-
-    setUser(newUser);
-    setToken(generatedToken);
-
-    localStorage.setItem('intellmeet_token', generatedToken);
-    localStorage.setItem('intellmeet_user', JSON.stringify(newUser));
-
-    setLoading(false);
-    return { success: true, user: newUser };
+    try {
+      const res = await api.post('/auth/register', { name, email, password });
+      saveSession(res.data.token, res.data.user);
+      return { success: true, user: res.data.user };
+    } catch (err) {
+      return { success: false, message: err.message };
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Logout handler
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -107,37 +74,30 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('intellmeet_token');
   };
 
-  // Forgot password request
+  // The three below are still simulated (no backend routes for them yet)
   const forgotPassword = async (email) => {
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    await new Promise((r) => setTimeout(r, 700));
     setLoading(false);
     return { success: true, message: `Password reset link sent to ${email}` };
   };
 
-  // Reset password handler
-  const resetPassword = async (newPassword) => {
+  const resetPassword = async () => {
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await new Promise((r) => setTimeout(r, 800));
     setLoading(false);
     return { success: true, message: 'Password has been updated successfully' };
   };
 
-  // Verify email code
-  const verifyEmail = async (code) => {
+  const verifyEmail = async () => {
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await new Promise((r) => setTimeout(r, 600));
     setLoading(false);
     return { success: true, message: 'Email verified successfully' };
   };
 
-  // Update user profile fields
   const updateProfile = (fields) => {
-    setUser((prevUser) => {
-      const updatedUser = { ...prevUser, ...fields };
-      localStorage.setItem('intellmeet_user', JSON.stringify(updatedUser));
-      return updatedUser;
-    });
+    setUser((prev) => ({ ...prev, ...fields }));
   };
 
   return (
@@ -145,7 +105,7 @@ export const AuthProvider = ({ children }) => {
       value={{
         user,
         token,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && !!token,
         loading,
         login,
         signup,
@@ -161,7 +121,6 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-// Custom hook to use auth context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
