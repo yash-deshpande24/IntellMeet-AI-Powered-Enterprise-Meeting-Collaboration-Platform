@@ -60,6 +60,8 @@ import { WorkspaceSettingsPage } from './pages/settings/WorkspaceSettingsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 
+import { KanbanBoardPage } from './pages/collaboration/KanbanBoardPage';
+
 function App() {
   return (
     <ThemeProvider>
@@ -127,6 +129,8 @@ function App() {
                 <Route path="/unauthorized" element={<UnauthorizedPage />} />
                 <Route path="/404" element={<NotFoundPage />} />
                 <Route path="*" element={<NotFoundPage />} />
+
+                <Route path="/workspace/board" element={<KanbanBoardPage />} />
               </Routes>
             </BrowserRouter>
           </MeetingProvider>
