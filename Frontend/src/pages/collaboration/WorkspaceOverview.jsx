@@ -9,13 +9,11 @@ import {
   Layers,
   Users,
   ShieldCheck,
-  FolderOpen,
-  Calendar,
   Sparkles,
   ArrowRight,
   HardDrive,
-  Globe,
   Settings,
+  Kanban,
 } from 'lucide-react';
 
 export const WorkspaceOverview = () => {
@@ -45,8 +43,13 @@ export const WorkspaceOverview = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link to="/workspace/board">
+            <Button variant="primary" size="sm" leftIcon={Kanban}>
+              Project Board
+            </Button>
+          </Link>
           <Link to="/workspace/members">
-            <Button variant="primary" size="sm" leftIcon={Users}>
+            <Button variant="outline" size="sm" leftIcon={Users}>
               Manage Team
             </Button>
           </Link>
