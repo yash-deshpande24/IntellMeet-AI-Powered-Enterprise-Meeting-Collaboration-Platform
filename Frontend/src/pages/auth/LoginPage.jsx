@@ -95,25 +95,38 @@ export const LoginPage = () => {
         </div>
 
         {/* 1-Click Demo Login Banner */}
-        <div className="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 flex items-center justify-between gap-3 shadow-sm">
+        <div className="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center gap-2.5 min-w-0">
             <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
             <div className="truncate">
               <p className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
-                Want a fast demo?
+                Evaluation Accounts
               </p>
               <p className="text-[11px] text-indigo-700 dark:text-indigo-300 truncate">
-                Pre-loaded with executive summaries & rooms
+                Admin: admin@intellmeet.io | Demo: alex.vance
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleDemoLogin}
-            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex-shrink-0 transition-colors shadow-sm"
-          >
-            1-Click Demo
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setEmail('admin@intellmeet.io');
+                setPassword('password123');
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900/60 dark:hover:bg-indigo-900 text-indigo-800 dark:text-indigo-200 text-xs font-semibold transition-colors"
+              title="Fill Admin Credentials (password123)"
+            >
+              Admin Fill
+            </button>
+            <button
+              type="button"
+              onClick={handleDemoLogin}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-sm"
+            >
+              1-Click Demo
+            </button>
+          </div>
         </div>
 
         {/* Login Form Card */}
