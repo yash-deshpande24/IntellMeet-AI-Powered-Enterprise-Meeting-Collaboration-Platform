@@ -4,16 +4,16 @@ import { useMeeting } from '../../context/MeetingContext';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { Avatar } from '../../components/common/Avatar';
-import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
+import { useSpeechTranscription } from '../../hooks/useSpeechTranscription';
+import * as socketModule from '../../services/socket';
 import {
   Mic,
   MicOff,
   Video,
   VideoOff,
   Share2,
-  StopCircle,
   Radio,
   Hand,
   Smile,
@@ -21,21 +21,25 @@ import {
   Users,
   Sparkles,
   PhoneOff,
-  Maximize,
-  Minimize,
   Send,
   Bot,
   Copy,
-  Check,
-  ShieldCheck,
-  MoreVertical,
+  FileText,
 } from 'lucide-react';
+
+// Works whether services/socket.js exports `default`, `socket`, or a getter function
+const resolveSocket = () => {
+  const s = socketModule.default ?? socketModule.socket ?? null;
+  return typeof s === 'function' ? s() : s;
+};
 
 export const LiveMeetingRoom = () => {
   const { id } = useParams();
+  const roomCode = id;
   const navigate = useNavigate();
   const { user } = useAuth();
   const { success, info } = useNotification();
+  const socket = resolveSocket();
 
   const {
     isMicOn,
@@ -58,7 +62,7 @@ export const LiveMeetingRoom = () => {
     sendChatMessage,
   } = useMeeting();
 
-  const [meetingTimer, setMeetingTimer] = useState(1458); // seconds elapsed (e.g. 24:18)
+  const [meetingTimer, setMeetingTimer] = useState(1458);
   const [chatInput, setChatInput] = useState('');
   const [aiQuestionInput, setAiQuestionInput] = useState('');
   const [aiResponses, setAiResponses] = useState([
@@ -70,6 +74,58 @@ export const LiveMeetingRoom = () => {
   ]);
   const [endMeetingModalOpen, setEndMeetingModalOpen] = useState(false);
   const [reactionsPopover, setReactionsPopover] = useState(false);
+  const [transcript, setTranscript] = useState([]);
+
+  // ---- Live speech transcription (Day 15) ----
+  const { supported, listening, start, stop } = useSpeechTranscription({
+    onFinalText: (text) => {
+      const chunk = {
+        speaker: user?.name || 'Speaker',
+        speakerAvatar: user?.avatar || '',
+        text,
+        timestamp: new Date().toISOString(),
+      };
+      if (socket && socket.connected) {
+        // Server saves it and broadcasts it back to everyone (including us)
+        socket.emit('send-transcript-chunk', {
+          roomCode,
+          text,
+          speaker: chunk.speaker,
+          speakerAvatar: chunk.speakerAvatar,
+        });
+      } else {
+        // Fallback when the socket is offline: show it locally
+        setTranscript((prev) => [...prev, chunk]);
+      }
+    },
+  });
+
+  // Join the socket room and listen for transcript lines
+  useEffect(() => {
+    if (!socket) return;
+
+    const joinRoom = () =>
+      socket.emit('join-room', {
+        roomCode,
+        user: {
+          id: user?.id || user?._id,
+          name: user?.name,
+          avatar: user?.avatar,
+          role: user?.role,
+        },
+      });
+
+    if (socket.connected) joinRoom();
+    socket.on('connect', joinRoom);
+
+    const handler = (chunk) => setTranscript((prev) => [...prev, chunk]);
+    socket.on('receive-transcript-chunk', handler);
+
+    return () => {
+      socket.off('connect', joinRoom);
+      socket.off('receive-transcript-chunk', handler);
+    };
+  }, [socket, roomCode, user]);
 
   // Timer counter
   useEffect(() => {
@@ -98,7 +154,6 @@ export const LiveMeetingRoom = () => {
     const userQ = aiQuestionInput;
     setAiQuestionInput('');
 
-    // Simulate instant AI synthesis
     setTimeout(() => {
       setAiResponses((prev) => [
         ...prev,
@@ -118,6 +173,7 @@ export const LiveMeetingRoom = () => {
   };
 
   const handleLeaveMeeting = () => {
+    stop();
     setEndMeetingModalOpen(false);
     navigate(`/meetings/ended/${id || 'meet-102'}`);
   };
@@ -153,6 +209,13 @@ export const LiveMeetingRoom = () => {
               <span className="text-xs font-bold text-rose-400 bg-rose-950/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-rose-800 flex items-center gap-1.5 animate-pulse">
                 <span className="w-2 h-2 rounded-full bg-rose-500" />
                 <span>REC LIVE</span>
+              </span>
+            )}
+
+            {listening && (
+              <span className="text-xs font-bold text-emerald-300 bg-emerald-950/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-emerald-800 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>CAPTIONS ON</span>
               </span>
             )}
           </div>
@@ -191,7 +254,6 @@ export const LiveMeetingRoom = () => {
                     : 'border-slate-800/80'
                 }`}
               >
-                {/* Simulated Video Stream or Avatar fallback */}
                 {participant.isCameraOn ? (
                   <img
                     src={participant.avatar}
@@ -205,7 +267,6 @@ export const LiveMeetingRoom = () => {
                   </div>
                 )}
 
-                {/* Top overlay badge: Active Speaker & Hand Raised */}
                 <div className="absolute top-3 left-3 flex items-center gap-2 z-10">
                   {isSpeaker && (
                     <span className="px-2 py-0.5 rounded-md bg-indigo-600/90 backdrop-blur-md text-[10px] font-bold text-white flex items-center gap-1">
@@ -220,7 +281,6 @@ export const LiveMeetingRoom = () => {
                   )}
                 </div>
 
-                {/* Bottom Overlay: Participant Name & Audio Status */}
                 <div className="absolute bottom-3 inset-x-3 flex items-center justify-between z-10">
                   <div className="px-2.5 py-1 rounded-xl bg-slate-950/80 backdrop-blur-md text-xs font-semibold text-white flex items-center gap-2 border border-slate-800/80">
                     <span className="truncate max-w-[150px]">{participant.name}</span>
@@ -239,6 +299,16 @@ export const LiveMeetingRoom = () => {
             );
           })}
         </div>
+
+        {/* Latest caption line over the video area */}
+        {listening && transcript.length > 0 && (
+          <div className="mt-2 mx-auto max-w-2xl px-4 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-100 text-center z-20">
+            <span className="font-bold text-indigo-300">
+              {transcript[transcript.length - 1].speaker}:{' '}
+            </span>
+            {transcript[transcript.length - 1].text}
+          </div>
+        )}
 
         {/* Bottom Floating Meeting Control Bar */}
         <div className="pt-4 flex items-center justify-center z-30">
@@ -336,6 +406,28 @@ export const LiveMeetingRoom = () => {
               )}
             </div>
 
+            {/* Live Captions Toggle (NEW) */}
+            {supported && (
+              <button
+                onClick={() => {
+                  if (listening) {
+                    stop();
+                  } else {
+                    start();
+                    setActiveTab('transcript');
+                  }
+                }}
+                className={`p-3 rounded-xl transition-all ${
+                  listening
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
+                title={listening ? 'Stop Live Captions' : 'Start Live Captions'}
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+            )}
+
             <div className="h-6 w-px bg-slate-700 mx-1 hidden sm:block" />
 
             {/* Chat Panel Toggle */}
@@ -390,15 +482,15 @@ export const LiveMeetingRoom = () => {
         </div>
       </div>
 
-      {/* Right Drawer (Chat / Participants / AI Bot) */}
+      {/* Right Drawer (Chat / Participants / Transcript / AI Bot) */}
       {activeTab && (
         <aside className="w-full md:w-80 lg:w-96 border-t md:border-t-0 md:border-l border-slate-800 bg-slate-900/95 backdrop-blur-md flex flex-col h-72 md:h-full z-20 animate-slide-up">
           {/* Drawer Header Tabs */}
           <div className="h-14 px-4 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
+                className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-all ${
                   activeTab === 'chat'
                     ? 'bg-indigo-600 text-white'
                     : 'text-slate-400 hover:text-white'
@@ -408,7 +500,7 @@ export const LiveMeetingRoom = () => {
               </button>
               <button
                 onClick={() => setActiveTab('participants')}
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
+                className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-all ${
                   activeTab === 'participants'
                     ? 'bg-indigo-600 text-white'
                     : 'text-slate-400 hover:text-white'
@@ -417,14 +509,24 @@ export const LiveMeetingRoom = () => {
                 People ({participants.length})
               </button>
               <button
+                onClick={() => setActiveTab('transcript')}
+                className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-all ${
+                  activeTab === 'transcript'
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-emerald-300 hover:text-white'
+                }`}
+              >
+                Transcript
+              </button>
+              <button
                 onClick={() => setActiveTab('ai')}
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 ${
+                className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1 ${
                   activeTab === 'ai'
                     ? 'bg-purple-600 text-white'
                     : 'text-purple-300 hover:text-white'
                 }`}
               >
-                <Sparkles className="w-3 h-3" /> IntellBot
+                <Sparkles className="w-3 h-3" /> AI
               </button>
             </div>
 
@@ -453,7 +555,6 @@ export const LiveMeetingRoom = () => {
                 ))}
               </div>
 
-              {/* Chat Input */}
               <form onSubmit={handleSendChat} className="p-3 border-t border-slate-800">
                 <div className="relative">
                   <input
@@ -521,7 +622,60 @@ export const LiveMeetingRoom = () => {
             </div>
           )}
 
-          {/* Tab 3: IntellBot AI Assistant */}
+          {/* Tab 3: Live Transcript (NEW) */}
+          {activeTab === 'transcript' && (
+            <div className="flex-1 flex flex-col justify-between overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {!supported && (
+                  <p className="text-xs text-amber-300">
+                    Live captions need Chrome or Edge. Your browser does not support speech recognition.
+                  </p>
+                )}
+                {supported && transcript.length === 0 && (
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {listening
+                      ? 'Listening... start speaking and your words will appear here.'
+                      : 'Click the captions button in the control bar to start live transcription.'}
+                  </p>
+                )}
+                {transcript.map((t, i) => (
+                  <div key={i} className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span className="font-bold text-slate-200">{t.speaker}</span>
+                      <span>
+                        {t.timestamp
+                          ? new Date(t.timestamp).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : ''}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-slate-800/80 text-xs text-slate-200 leading-relaxed border border-slate-700/50">
+                      {t.text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {supported && (
+                <div className="p-3 border-t border-slate-800">
+                  <button
+                    onClick={listening ? stop : start}
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition-colors ${
+                      listening
+                        ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
+                  >
+                    {listening ? 'Stop captions' : 'Start live captions'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 4: IntellBot AI Assistant */}
           {activeTab === 'ai' && (
             <div className="flex-1 flex flex-col justify-between overflow-hidden">
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -534,7 +688,6 @@ export const LiveMeetingRoom = () => {
                   </p>
                 </div>
 
-                {/* AI Responses History */}
                 {aiResponses.map((res, i) => (
                   <div key={i} className="space-y-2">
                     <div className="text-[11px] font-semibold text-slate-300 bg-slate-800/70 p-2.5 rounded-xl border border-slate-700/60">
@@ -547,7 +700,6 @@ export const LiveMeetingRoom = () => {
                 ))}
               </div>
 
-              {/* Ask Question Form */}
               <form onSubmit={handleAskAi} className="p-3 border-t border-slate-800">
                 <div className="relative">
                   <input
