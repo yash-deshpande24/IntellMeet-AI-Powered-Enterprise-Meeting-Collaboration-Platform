@@ -31,6 +31,9 @@ import {
   MoreVertical,
 } from 'lucide-react';
 
+import { getSocket } from '../../services/socket';
+import { meetingService } from '../../services/meetingService';
+
 export const LiveMeetingRoom = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -49,6 +52,8 @@ export const LiveMeetingRoom = () => {
     participants,
     chatMessages,
     activeReactions,
+    joinMeetingRoom,
+    leaveMeetingRoom,
     toggleMic,
     toggleCamera,
     toggleScreenSharing,
@@ -71,6 +76,31 @@ export const LiveMeetingRoom = () => {
   const [endMeetingModalOpen, setEndMeetingModalOpen] = useState(false);
   const [reactionsPopover, setReactionsPopover] = useState(false);
 
+  // Initialize Socket.io room connection on enter and cleanup on leave
+  useEffect(() => {
+    const roomCode = id || 'meet-102';
+    joinMeetingRoom(roomCode, user);
+
+    const socket = getSocket();
+    if (socket) {
+      socket.on('ai-copilot-response', (res) => {
+        setAiResponses((prev) => [
+          ...prev,
+          {
+            q: res.question,
+            a: res.answer,
+            time: new Date(res.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]);
+        success('IntellBot synthesized an answer from backend AI engine');
+      });
+    }
+
+    return () => {
+      leaveMeetingRoom();
+    };
+  }, [id]);
+
   // Timer counter
   useEffect(() => {
     const timer = setInterval(() => {
@@ -88,7 +118,7 @@ export const LiveMeetingRoom = () => {
   const handleSendChat = (e) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
-    sendChatMessage(chatInput);
+    sendChatMessage(chatInput, user);
     setChatInput('');
   };
 
@@ -98,18 +128,27 @@ export const LiveMeetingRoom = () => {
     const userQ = aiQuestionInput;
     setAiQuestionInput('');
 
-    // Simulate instant AI synthesis
-    setTimeout(() => {
-      setAiResponses((prev) => [
-        ...prev,
-        {
-          q: userQ,
-          a: `According to the current live conversation: Elena and David both agreed to implement fallback CSS tokens for WCAG AA compliance before Sprint 25 deployment.`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
-      success('IntellBot synthesized an answer from the transcript');
-    }, 800);
+    const socket = getSocket();
+    if (socket && socket.connected) {
+      socket.emit('ask-ai-copilot', {
+        roomCode: id || 'meet-102',
+        question: userQ,
+        meetingTitle: 'Enterprise Live Meeting',
+      });
+    } else {
+      // Graceful local fallback
+      setTimeout(() => {
+        setAiResponses((prev) => [
+          ...prev,
+          {
+            q: userQ,
+            a: `According to the current live conversation: Elena and David both agreed to implement fallback CSS tokens for WCAG AA compliance before Sprint 25 deployment.`,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]);
+        success('IntellBot synthesized an answer from the transcript');
+      }, 700);
+    }
   };
 
   const handleCopyInvite = () => {

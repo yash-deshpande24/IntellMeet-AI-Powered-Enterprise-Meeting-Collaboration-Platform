@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { mockActionItems as initialActions, mockTeamMembers } from '../../data/mockData';
+import { taskService } from '../../services/taskService';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
@@ -34,12 +35,47 @@ export const ActionItemsPage = () => {
     priority: 'High',
   });
 
+  // Fetch backend tasks with fallback
+  useEffect(() => {
+    taskService
+      .getTasks()
+      .then((data) => {
+        if (data?.tasks && data.tasks.length > 0) {
+          const mapped = data.tasks.map((t) => ({
+            id: t._id,
+            meetingId: t.meetingId?._id || 'custom',
+            meetingTitle: t.meetingId?.title || 'Platform Architecture Board',
+            title: t.title,
+            assignee: {
+              name: t.assignee || 'Alex Vance',
+              avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+            },
+            dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : '2026-10-24',
+            priority: t.priority ? t.priority.charAt(0).toUpperCase() + t.priority.slice(1) : 'Medium',
+            status: t.status === 'done' ? 'completed' : 'pending',
+            completed: t.status === 'done',
+          }));
+
+          const existingIds = new Set(mapped.map((m) => m.id));
+          const uniqueInitial = initialActions.filter((a) => !existingIds.has(a.id));
+          setActions([...mapped, ...uniqueInitial]);
+        }
+      })
+      .catch((err) => {
+        console.warn('[ActionItemsPage] Fallback to mock action items:', err.message);
+      });
+  }, []);
+
   const toggleTask = (id) => {
     setActions((prev) =>
       prev.map((item) => {
         if (item.id === id) {
           const next = !item.completed;
           if (next) success(`Action item marked as resolved!`);
+          // Sync with backend if Mongo ID
+          if (id.length === 24) {
+            taskService.updateTaskStatus(id, next ? 'done' : 'in-progress').catch(() => {});
+          }
           return { ...item, completed: next, status: next ? 'completed' : 'pending' };
         }
         return item;
@@ -47,9 +83,22 @@ export const ActionItemsPage = () => {
     );
   };
 
-  const handleCreateTask = (e) => {
+  const handleCreateTask = async (e) => {
     e.preventDefault();
     if (!newTask.title.trim()) return;
+
+    // Persist to backend if available
+    try {
+      await taskService.createTask({
+        title: newTask.title,
+        status: 'todo',
+        priority: newTask.priority.toLowerCase(),
+        assignee: newTask.assigneeName,
+        dueDate: new Date(newTask.dueDate),
+      });
+    } catch (err) {
+      console.warn('[ActionItemsPage] Persisted locally notice:', err.message);
+    }
 
     const created = {
       id: 'act-' + Date.now(),
