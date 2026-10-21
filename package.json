@@ -1,0 +1,24 @@
+{
+  "name": "intellmeet-platform",
+  "version": "1.0.0",
+  "description": "IntellMeet - AI-Powered Enterprise Meeting & Collaboration Platform",
+  "scripts": {
+    "dev:backend": "npm run dev --prefix Backend",
+    "dev:frontend": "npm run dev --prefix Frontend",
+    "dev": "node -e \"const { spawn } = require('child_process'); const b = spawn('npm', ['run', 'dev', '--prefix', 'Backend'], { stdio: 'inherit', shell: true }); const f = spawn('npm', ['run', 'dev', '--prefix', 'Frontend'], { stdio: 'inherit', shell: true }); process.on('SIGINT', () => { b.kill(); f.kill(); process.exit(); });\"",
+    "install:backend": "npm install --prefix Backend",
+    "install:frontend": "npm install --prefix Frontend",
+    "install:all": "npm run install:backend && npm run install:frontend",
+    "build:frontend": "npm run build --prefix Frontend"
+  },
+  "keywords": [
+    "webrtc",
+    "ai-meeting",
+    "react",
+    "express",
+    "socket.io",
+    "mern"
+  ],
+  "author": "IntellMeet Team",
+  "license": "ISC"
+}
