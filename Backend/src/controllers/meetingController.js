@@ -1,6 +1,7 @@
 import Meeting from '../models/Meeting.js';
 import Task from '../models/Task.js';
 import { AiService } from '../services/aiService.js';
+import { createNotification, findUserByName } from '../services/notificationService.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const generateRoomCode = () => {
@@ -179,6 +180,23 @@ export const triggerAiSummary = async (req, res) => {
     meeting.summary = summary;
     await meeting.save();
 
+    // Day 20: tell the host and participants that the summary is ready
+    const userIds = new Set(
+      [meeting.host, ...meeting.participants.map((p) => p.user)]
+        .filter(Boolean)
+        .map((u) => String(u))
+    );
+    for (const userId of userIds) {
+      await createNotification({
+        io: req.app.get('io'),
+        userId,
+        type: 'summary-ready',
+        title: 'AI summary is ready',
+        message: meeting.title,
+        link: `/ai/summaries/${meeting._id}`,
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: 'AI Summary synthesized successfully',
@@ -253,6 +271,19 @@ export const convertActionItemToTask = async (req, res) => {
     actionItem.status = 'converted';
     actionItem.convertedTaskId = task._id;
     await meeting.save();
+
+    // Day 20: notify the person the action item was assigned to
+    const recipient = await findUserByName(task.assignee);
+    if (recipient && String(recipient._id) !== String(req.user._id || req.user.id)) {
+      await createNotification({
+        io: req.app.get('io'),
+        userId: recipient._id,
+        type: 'action-item',
+        title: 'Action item assigned to you',
+        message: `From "${meeting.title}": ${task.title}`,
+        link: '/ai/action-items',
+      });
+    }
 
     res.status(201).json({
       success: true,
