@@ -1,5 +1,7 @@
 import express from 'express';
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -14,13 +16,17 @@ import meetingRoutes from './routes/meetingRoutes.js';
 import taskRoutes from './routes/taskRoutes.js';
 import workspaceRoutes from './routes/workspaceRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 
 import User from './models/User.js';
 import Workspace from './models/Workspace.js';
 import Meeting from './models/Meeting.js';
 import Task from './models/Task.js';
 
-dotenv.config();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+dotenv.config(); // shared defaults from Backend/.env
+dotenv.config({ path: path.join(__dirname, '../.env.local'), override: true }); // your private overrides (git-ignored)
 
 const isProduction = process.env.NODE_ENV === 'production';
 let httpsOrigin = process.env.HTTPS_ORIGIN;
@@ -62,6 +68,9 @@ const io = new Server(server, {
   }
 });
 
+// Make Socket.io available inside controllers (req.app.get('io'))
+app.set('io', io);
+
 // Middleware
 app.use(helmet({
   hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true } : false,
@@ -95,6 +104,7 @@ app.use('/api/meetings', meetingRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health Check
 app.get('/api/health', (req, res) => {
