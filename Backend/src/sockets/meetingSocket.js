@@ -1,5 +1,7 @@
 import { AiService } from '../services/aiService.js';
 import Meeting from '../models/Meeting.js';
+import jwt from 'jsonwebtoken';
+import { createNotification, findMentionedUsers } from '../services/notificationService.js';
 
 // Active in-memory room tracking for high-performance WebRTC mesh routing
 const activeRooms = new Map();
@@ -7,6 +9,16 @@ const activeRooms = new Map();
 export const setupMeetingSocket = (io) => {
   io.on('connection', (socket) => {
     console.log(`[Socket.io] Client connected: ${socket.id}`);
+
+    // Day 20: join a private room for this user so notifications can be pushed live
+    socket.on('register-user', ({ token }) => {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (decoded?.id) socket.join(`user:${decoded.id}`);
+      } catch {
+        /* invalid token: ignore */
+      }
+    });
 
     // Join meeting room
     socket.on('join-room', async ({ roomCode, user }) => {
@@ -86,6 +98,21 @@ export const setupMeetingSocket = (io) => {
       };
 
       io.to(roomCode).emit('chat-message', msgData);
+
+      // Day 20: notify users mentioned with @Name
+      findMentionedUsers(message).then((users) => {
+        users.forEach((u) => {
+          if (String(u._id) === String(socket.user?.id)) return; // do not notify yourself
+          createNotification({
+            io,
+            userId: u._id,
+            type: 'mention',
+            title: `${msgData.sender} mentioned you`,
+            message: String(message).slice(0, 120),
+            link: `/meetings/room/${roomCode}`,
+          });
+        });
+      }).catch(() => {});
 
       // Save to meeting record if available in background
       Meeting.findOneAndUpdate(

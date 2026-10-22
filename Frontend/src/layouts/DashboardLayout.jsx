@@ -5,6 +5,8 @@ import { useTheme } from '../context/ThemeContext';
 import { useNotification } from '../context/NotificationContext';
 import { Avatar } from '../components/common/Avatar';
 import { Badge } from '../components/common/Badge';
+import { NotificationBell } from '../components/common/NotificationBell';
+
 import {
   Video,
   LayoutDashboard,
@@ -31,6 +33,9 @@ import {
   Layers,
   ChevronRight,
 } from 'lucide-react';
+
+// ...
+<NotificationBell />
 
 export const DashboardLayout = () => {
   const { user, logout } = useAuth();
