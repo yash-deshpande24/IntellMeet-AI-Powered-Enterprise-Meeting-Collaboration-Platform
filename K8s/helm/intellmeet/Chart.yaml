@@ -1,6 +1,6 @@
 apiVersion: v2
 name: intellmeet
-description: Helm chart for deploying the IntellMeet application stack.
+description: IntellMeet - AI-powered enterprise meeting and collaboration platform
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
