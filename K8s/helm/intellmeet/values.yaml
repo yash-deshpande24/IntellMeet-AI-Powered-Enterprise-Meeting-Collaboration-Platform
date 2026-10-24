@@ -1,0 +1,22 @@
+secrets:
+  JWT_SECRET: "replace-with-a-long-random-secret"
+  MONGO_URI: "mongodb://mongo:27017/intellmeet"
+  create: true
+
+backend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: intellmeet-ai-powered-enterprise-meeting-collaboration-platform-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  autoscaling:
+    enabled: false
+
+frontend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: intellmeet-ai-powered-enterprise-meeting-collaboration-platform-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
