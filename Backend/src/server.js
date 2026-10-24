@@ -83,7 +83,7 @@ app.use(cors({
   credentials: true
 }));
 app.use((req, res, next) => {
-  if (isProduction && !req.secure) {
+  if (isProduction && !req.secure && req.path !== '/api/health') {
     return res.redirect(308, `${httpsOrigin}${req.originalUrl}`);
   }
   next();
@@ -287,7 +287,7 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   const dbConnected = await connectDB();
-  if (dbConnected && process.env.NODE_ENV === 'development') {
+  if (dbConnected && (process.env.NODE_ENV === 'development' || process.env.SEED_DEMO_DATA === 'true')) {
     await seedInitialData();
   }
 
