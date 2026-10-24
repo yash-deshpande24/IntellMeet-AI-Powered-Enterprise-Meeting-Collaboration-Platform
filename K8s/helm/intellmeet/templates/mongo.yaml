@@ -2,22 +2,22 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mongo-data
-  namespace: intellmeet
+  namespace: {{ .Release.Namespace }}
 spec:
   accessModes: ["ReadWriteOnce"]
   resources:
     requests:
-      storage: 1Gi
+      storage: {{ .Values.mongo.storage }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mongo
-  namespace: intellmeet
+  namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   strategy:
-    type: Recreate          # one volume, so never run two pods at once
+    type: Recreate
   selector:
     matchLabels:
       app: mongo
@@ -28,7 +28,7 @@ spec:
     spec:
       containers:
         - name: mongo
-          image: mongo:7
+          image: "{{ .Values.image.mongo.repository }}:{{ .Values.image.mongo.tag }}"
           ports:
             - containerPort: 27017
           volumeMounts:
@@ -40,11 +40,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              memory: 512Mi
+{{ toYaml .Values.mongo.resources | indent 12 }}
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -54,7 +50,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mongo
-  namespace: intellmeet
+  namespace: {{ .Release.Namespace }}
 spec:
   selector:
     app: mongo

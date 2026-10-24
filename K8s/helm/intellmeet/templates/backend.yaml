@@ -1,21 +1,10 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: backend-config
-  namespace: intellmeet
-data:
-  PORT: "5000"
-  NODE_ENV: "development"          # development enables demo seed data
-  MONGODB_URI: "mongodb://mongo:27017/intellmeet"
-  ALLOWED_ORIGINS: "http://localhost:8080,http://127.0.0.1:8080"
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
-  namespace: intellmeet
+  namespace: {{ .Release.Namespace }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.backend.replicas }}
   selector:
     matchLabels:
       app: backend
@@ -23,18 +12,19 @@ spec:
     metadata:
       labels:
         app: backend
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
-      # Your connectDB() does not retry, so wait until MongoDB accepts connections
       initContainers:
         - name: wait-for-mongo
           image: busybox:1.36
           command: ["sh", "-c", "until nc -z mongo 27017; do echo waiting for mongo; sleep 2; done"]
       containers:
         - name: backend
-          image: intellmeet-backend:local
-          imagePullPolicy: IfNotPresent
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
           ports:
-            - containerPort: 5000
+            - containerPort: {{ .Values.backend.port }}
           envFrom:
             - configMapRef:
                 name: backend-config
@@ -43,32 +33,27 @@ spec:
           readinessProbe:
             httpGet:
               path: /api/health
-              port: 5000
+              port: {{ .Values.backend.port }}
             initialDelaySeconds: 10
             periodSeconds: 15
           livenessProbe:
             httpGet:
               path: /api/health
-              port: 5000
+              port: {{ .Values.backend.port }}
             initialDelaySeconds: 30
             periodSeconds: 20
           resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
+{{ toYaml .Values.backend.resources | indent 12 }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: backend
-  namespace: intellmeet
+  namespace: {{ .Release.Namespace }}
 spec:
   selector:
     app: backend
-  sessionAffinity: ClientIP       # Socket.io needs the same client on the same pod
+  sessionAffinity: ClientIP
   ports:
-    - port: 5000
-      targetPort: 5000
+    - port: {{ .Values.backend.port }}
+      targetPort: {{ .Values.backend.port }}
