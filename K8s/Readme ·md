@@ -1,0 +1,85 @@
+# Kubernetes Deployment (Day 23)
+
+Kubernetes manifests for IntellMeet. They run MongoDB, the backend API and the
+frontend in a dedicated `intellmeet` namespace.
+
+## Files
+
+| File | What it creates |
+|---|---|
+| `namespace.yaml` | The `intellmeet` namespace |
+| `secret.yaml` | Secrets for the backend (placeholders only, never commit real values) |
+| `mongo.yaml` | MongoDB StatefulSet with a 1Gi volume, plus a ClusterIP service |
+| `backend.yaml` | Backend Deployment (2 replicas, health probes, resource limits), plus service |
+| `frontend.yaml` | Frontend Deployment (nginx, 2 replicas), plus a LoadBalancer service |
+| `hpa.yaml` | Horizontal Pod Autoscaler for the backend (2 to 6 pods at 70% CPU) |
+
+## Architecture
+
+```
+Browser -> frontend Service (LoadBalancer :8080)
+              -> frontend Pods (nginx, static React build)
+Browser -> backend Service (:5000) -> backend Pods (Node/Express + Socket.io)
+                                         -> mongo Service (:27017) -> MongoDB StatefulSet
+```
+
+## Prerequisites
+
+- Docker images pushed to a registry (replace `YOUR_DOCKERHUB_USER` in
+  `backend.yaml` and `frontend.yaml`)
+- A cluster: Docker Desktop (Settings > Kubernetes > Enable), minikube, or a cloud cluster
+- `kubectl` installed
+
+## Build and push images
+
+```bash
+docker build -t YOUR_DOCKERHUB_USER/intellmeet-backend:latest ./Backend
+docker build -t YOUR_DOCKERHUB_USER/intellmeet-frontend:latest \
+  --build-arg VITE_API_URL=http://localhost:5000/api ./Frontend
+docker push YOUR_DOCKERHUB_USER/intellmeet-backend:latest
+docker push YOUR_DOCKERHUB_USER/intellmeet-frontend:latest
+```
+
+## Deploy
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/
+kubectl get pods -n intellmeet
+kubectl get svc -n intellmeet
+```
+
+## Verify
+
+```bash
+kubectl get pods -n intellmeet            # all pods Running
+kubectl logs deploy/backend -n intellmeet # "MongoDB Connected successfully"
+kubectl port-forward svc/backend 5000:5000 -n intellmeet
+curl http://localhost:5000/api/health     # expect HTTP 200
+```
+
+Open http://localhost:8080 for the frontend.
+
+## Clean up
+
+```bash
+kubectl delete namespace intellmeet
+```
+
+## Configuration
+
+Environment values are set in `backend.yaml` (`PORT`, `MONGO_URI`, `CLIENT_URL`).
+Secrets belong in `secret.yaml`. Edit the placeholder values locally and do not
+commit real keys. For production, create secrets with
+`kubectl create secret` or an external secret manager.
+
+## Known limitations
+
+- The frontend image has `VITE_API_URL` baked in at build time, so it must be
+  rebuilt with the real backend URL for each environment.
+- Socket.io with more than one backend replica needs sticky sessions or a Redis
+  adapter so real-time events reach every client. Redis is planned but not yet added.
+- MongoDB runs as a single replica without authentication. Use a managed
+  database (for example MongoDB Atlas) for production.
+- Manifests were written to the Day 23 plan. Test them on a cluster before
+  relying on them.
