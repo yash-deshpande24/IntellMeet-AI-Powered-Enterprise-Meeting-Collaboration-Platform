@@ -1,0 +1,11 @@
+IntellMeet has been installed in namespace {{ .Release.Namespace }}.
+
+Check the pods:
+  kubectl get pods -n {{ .Release.Namespace }}
+
+Open the app (two terminals, keep both open):
+  kubectl port-forward -n {{ .Release.Namespace }} svc/backend 5000:5000
+  kubectl port-forward -n {{ .Release.Namespace }} svc/frontend 8080:80
+
+Then browse to http://localhost:8080
+Demo login: admin@intellmeet.io / password123
