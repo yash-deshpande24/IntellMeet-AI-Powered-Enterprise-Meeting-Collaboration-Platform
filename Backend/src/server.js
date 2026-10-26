@@ -10,6 +10,8 @@ import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import { setupMeetingSocket } from './sockets/meetingSocket.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
+import { initSentry, attachErrorHandlers } from './monitoring/sentry.js';
+import { metricsMiddleware, metricsHandler, trackSockets } from './monitoring/metrics.js';
 
 import authRoutes from './routes/authRoutes.js';
 import meetingRoutes from './routes/meetingRoutes.js';
@@ -27,6 +29,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 dotenv.config(); // shared defaults from Backend/.env
 dotenv.config({ path: path.join(__dirname, '../.env.local'), override: true }); // your private overrides (git-ignored)
+
+initSentry(); // Day 26: error tracking (only active when SENTRY_DSN is set)
 
 const isProduction = process.env.NODE_ENV === 'production';
 let httpsOrigin = process.env.HTTPS_ORIGIN;
@@ -71,6 +75,8 @@ const io = new Server(server, {
 // Make Socket.io available inside controllers (req.app.get('io'))
 app.set('io', io);
 
+trackSockets(io); // Day 26: socket gauge
+
 // Middleware
 app.use(helmet({
   hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true } : false,
@@ -91,12 +97,16 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(morgan('dev'));
+app.use(metricsMiddleware); // Day 26: request metrics
 
 // Rate Limiting
 app.use('/api/', apiLimiter);
 
 // Setup WebRTC and Chat Socket
 setupMeetingSocket(io);
+
+// Prometheus metrics (set METRICS_TOKEN to protect it)
+app.get('/metrics', metricsHandler);
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -121,6 +131,16 @@ app.get('/api/health', (req, res) => {
     }
   });
 });
+
+// Day 26: optional route to prove Sentry works (enable with ENABLE_DEBUG_ROUTES=true)
+if (process.env.ENABLE_DEBUG_ROUTES === 'true') {
+  app.get('/debug-sentry', () => {
+    throw new Error('Test error from /debug-sentry');
+  });
+}
+
+// Day 26: must come after every route
+attachErrorHandlers(app);
 
 // Automatic Seed Function for Quick Demo & Evaluation
 const seedInitialData = async () => {
