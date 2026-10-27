@@ -81,8 +81,21 @@ trackSockets(io); // Day 26: socket gauge
 app.use(helmet({
   hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true } : false,
   crossOriginResourcePolicy: false,
-  crossOriginOpenerPolicy: false
+  crossOriginOpenerPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+      formAction: ["'self'"]
+    }
+  }
 }));
+// Day 27 (ZAP findings): Permissions-Policy and no caching of API responses
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 app.use(cors({
   origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
