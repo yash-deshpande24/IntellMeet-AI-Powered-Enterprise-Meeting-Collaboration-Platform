@@ -1,9 +1,14 @@
 import rateLimit from 'express-rate-limit';
 
-// Standard rate limiter for API endpoints (100 requests per 15 min)
+// Limits can be raised for LOCAL load tests with environment variables.
+// Defaults stay strict (the same values as before).
+const apiMax = Number(process.env.RATE_LIMIT_MAX) || 200;
+const authMax = Number(process.env.AUTH_RATE_LIMIT_MAX) || 30;
+
+// Standard rate limiter for API endpoints (200 requests per 15 min per IP)
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: apiMax,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -12,10 +17,10 @@ export const apiLimiter = rateLimit({
   }
 });
 
-// Strict rate limiter for Authentication endpoints (prevent brute force)
+// Strict rate limiter for Authentication endpoints (30 attempts per 15 min per IP)
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: authMax,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
