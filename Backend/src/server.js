@@ -129,6 +129,16 @@ app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationRoutes);
 
+// Friendly root route
+app.get('/', (req, res) => {
+  res.json({
+    name: 'IntellMeet API',
+    status: 'running',
+    health: '/api/health',
+    frontend: 'https://intell-meet-ai-powered-enterprise-m-ebon.vercel.app'
+  });
+});
+
 // Health Check
 app.get('/api/health', (req, res) => {
   res.status(200).json({
