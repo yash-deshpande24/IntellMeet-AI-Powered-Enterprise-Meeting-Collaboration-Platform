@@ -59,6 +59,7 @@ import { WorkspaceSettingsPage } from './pages/settings/WorkspaceSettingsPage';
 // Error & Fallback Pages
 import { NotFoundPage } from './pages/NotFoundPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
+import { KanbanBoardPage } from './pages/collaboration/KanbanBoardPage';
 
 function App() {
   return (
@@ -97,6 +98,7 @@ function App() {
                   }
                 >
                   <Route path="/dashboard" element={<DashboardOverview />} />
+                  <Route path="/workspace/board" element={<KanbanBoardPage />} />
 
                   {/* Meetings */}
                   <Route path="/meetings" element={<MeetingsListPage />} />
