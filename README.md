@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| **Live demo** | `<VERCEL_URL>` |
+| **Live demo** | https://intell-meet-ai-powered-enterprise-meeting-git-46cb7d-yash-f623.vercel.app/ |
 | **API health check** | https://intellmeet-ai-ei2d.onrender.com/api/health |
 | **Demo login (admin)** | `admin@intellmeet.io` / `password123` |
 | **Demo login (member)** | `member@intellmeet.io` / `password123` |
