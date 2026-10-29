@@ -318,3 +318,5 @@ Kubernetes/Helm:  frontend Service -> frontend Pods (x2)
 ## 19. Author
 
 Built by **Yash Deshpande**, **Tanuj Darokar**, **Sabarish Nathan C** and **Shayali Verma** for the Zidio Development / LogicVeda Web Development (MERN) program, 2026.
+
+```
