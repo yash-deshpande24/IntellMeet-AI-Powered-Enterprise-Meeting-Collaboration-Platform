@@ -257,10 +257,6 @@ Redis adapter for Socket.io, refresh tokens, monitoring with Prometheus and Graf
 
 **Yash Deshpande**: [GitHub](https://github.com/yash-deshpande24)
 
-
-================================================
-FILE: Platform/docs/architecture.md
-================================================
 # IntellMeet Architecture
 
 ```
