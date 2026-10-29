@@ -1,6 +1,3 @@
-================================================
-FILE: Platform/README.md
-================================================
 # IntellMeet: AI-Powered Enterprise Meeting & Collaboration Platform
 
 > Real-time meetings, AI summaries, smart action items and team task boards in one MERN application.
