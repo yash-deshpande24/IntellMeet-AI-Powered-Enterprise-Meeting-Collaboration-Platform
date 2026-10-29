@@ -252,7 +252,3 @@ feature honestly), which practices you applied, and what you would build next (r
 Redis adapter for Socket.io, refresh tokens, monitoring with Prometheus and Grafana).
 
 ---
-
-## Author
-
-**Yash Deshpande**: [GitHub](https://github.com/yash-deshpande24)
