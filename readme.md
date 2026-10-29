@@ -125,7 +125,7 @@ IntellMeet-AI-Powered-Enterprise-Meeting-Collaboration-Platform/
 ├── Frontend/           React + Vite + Tailwind app
 ├── k8s/                Kubernetes manifests
 ├── helm/intellmeet/    Helm chart
-├── docs/               Architecture diagram and screenshots
+├── Platform/           Platform documentation
 ├── .github/workflows/  CI/CD pipeline
 └── docker-compose.yml  Runs MongoDB + backend + frontend
 ```
