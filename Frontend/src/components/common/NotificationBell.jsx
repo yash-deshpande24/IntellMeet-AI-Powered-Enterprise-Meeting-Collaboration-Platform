@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, Pin, CheckCircle2, MessageSquare, Sparkles } from 'lucide-react';
 import * as socketModule from '../../services/socket';
 import {
   getNotifications,
@@ -23,12 +23,20 @@ const timeAgo = (date) => {
   return `${Math.floor(seconds / 86400)} d ago`;
 };
 
-const typeIcon = {
-  'task-assigned': '📌',
-  'action-item': '✅',
-  mention: '💬',
-  'summary-ready': '✨',
-  system: '🔔',
+const renderTypeIcon = (type) => {
+  switch (type) {
+    case 'task-assigned':
+      return <Pin className="w-4 h-4 text-amber-500" />;
+    case 'action-item':
+      return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+    case 'mention':
+      return <MessageSquare className="w-4 h-4 text-blue-500" />;
+    case 'summary-ready':
+      return <Sparkles className="w-4 h-4 text-purple-500" />;
+    case 'system':
+    default:
+      return <Bell className="w-4 h-4 text-slate-500" />;
+  }
 };
 
 export const NotificationBell = () => {
@@ -144,7 +152,9 @@ export const NotificationBell = () => {
                   n.read ? 'opacity-60' : ''
                 }`}
               >
-                <span className="text-lg">{typeIcon[n.type] || '🔔'}</span>
+                <span className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                  {renderTypeIcon(n.type)}
+                </span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-xs font-bold text-slate-900 dark:text-white">{n.title}</span>
                   <span className="block text-[11px] text-slate-600 dark:text-slate-400 truncate">{n.message}</span>

@@ -74,7 +74,7 @@ export const MeetingEndedPage = () => {
             <div>
               <p className="text-[11px] text-slate-400 uppercase font-semibold">AI Digest</p>
               <p className="text-base font-extrabold text-emerald-500 mt-0.5">
-                Ready ✨
+                Ready
               </p>
             </div>
           </div>
