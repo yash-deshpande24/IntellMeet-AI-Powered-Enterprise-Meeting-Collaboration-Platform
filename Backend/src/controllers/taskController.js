@@ -1,4 +1,21 @@
 import Task from '../models/Task.js';
+import { createNotification, findUserByName } from '../services/notificationService.js';
+
+// Notify the assignee of a task (does nothing if unassigned or if you assign it to yourself)
+const notifyAssignee = async (req, task) => {
+  const recipient = await findUserByName(task.assignee);
+  if (!recipient) return;
+  if (String(recipient._id) === String(req.user._id || req.user.id)) return;
+
+  await createNotification({
+    io: req.app.get('io'),
+    userId: recipient._id,
+    type: 'task-assigned',
+    title: 'New task assigned to you',
+    message: `${req.user.name} assigned you "${task.title}"`,
+    link: '/workspace',
+  });
+};
 
 export const getTasks = async (req, res) => {
   try {
@@ -47,6 +64,8 @@ export const createTask = async (req, res) => {
       tags: tags || []
     });
 
+    await notifyAssignee(req, task);
+
     res.status(201).json({
       success: true,
       message: 'Task created successfully',
@@ -62,9 +81,14 @@ export const updateTask = async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
 
+    const before = await Task.findById(id).select('assignee');
     const task = await Task.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
     if (!task) {
       return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    if (before && updateData.assignee && updateData.assignee !== before.assignee) {
+      await notifyAssignee(req, task);
     }
 
     res.status(200).json({

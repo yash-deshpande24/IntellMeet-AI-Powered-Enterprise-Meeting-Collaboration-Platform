@@ -64,13 +64,13 @@ export const SignUpPage = () => {
     }
 
     if (!formData.email.trim() || !/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Valid work email is required';
+      newErrors.email = 'Valid email address is required';
     }
 
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
     }
 
     if (formData.password !== formData.confirmPassword) {
@@ -117,10 +117,10 @@ export const SignUpPage = () => {
             </span>
           </Link>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Create Your Enterprise Account
+            Create Your Account
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            Start your 14-day free trial with full AI intelligence features
+            Sign up with any @gmail.com address or corporate email
           </p>
         </div>
 
@@ -137,11 +137,11 @@ export const SignUpPage = () => {
               error={errors.name}
             />
 
-            {/* Work Email */}
+            {/* Work or Gmail Email */}
             <Input
-              label="Work Email"
+              label="Work or Gmail Email"
               type="email"
-              placeholder="name@enterprise.com"
+              placeholder="you@gmail.com or name@enterprise.com"
               leftIcon={Mail}
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}

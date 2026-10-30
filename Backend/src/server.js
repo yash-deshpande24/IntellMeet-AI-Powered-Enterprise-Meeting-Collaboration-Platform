@@ -1,5 +1,7 @@
 import express from 'express';
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -8,19 +10,27 @@ import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import { setupMeetingSocket } from './sockets/meetingSocket.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
+import { initSentry, attachErrorHandlers } from './monitoring/sentry.js';
+import { metricsMiddleware, metricsHandler, trackSockets } from './monitoring/metrics.js';
 
 import authRoutes from './routes/authRoutes.js';
 import meetingRoutes from './routes/meetingRoutes.js';
 import taskRoutes from './routes/taskRoutes.js';
 import workspaceRoutes from './routes/workspaceRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 
 import User from './models/User.js';
 import Workspace from './models/Workspace.js';
 import Meeting from './models/Meeting.js';
 import Task from './models/Task.js';
 
-dotenv.config();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+dotenv.config(); // shared defaults from Backend/.env
+dotenv.config({ path: path.join(__dirname, '../.env.local'), override: true }); // private overrides
+
+initSentry(); // error tracking
 
 const isProduction = process.env.NODE_ENV === 'production';
 let httpsOrigin = process.env.HTTPS_ORIGIN;
@@ -62,26 +72,47 @@ const io = new Server(server, {
   }
 });
 
+// Make Socket.io available inside controllers
+app.set('io', io);
+trackSockets(io);
+
 // Middleware
 app.use(helmet({
   hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true } : false,
   crossOriginResourcePolicy: false,
-  crossOriginOpenerPolicy: false
+  crossOriginOpenerPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+      formAction: ["'self'"]
+    }
+  }
 }));
+
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
 app.use(cors({
   origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   credentials: true
 }));
+
 app.use((req, res, next) => {
-  if (isProduction && !req.secure) {
+  if (isProduction && !req.secure && req.path !== '/api/health') {
     return res.redirect(308, `${httpsOrigin}${req.originalUrl}`);
   }
   next();
 });
+
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(morgan('dev'));
+app.use(metricsMiddleware);
 
 // Rate Limiting
 app.use('/api/', apiLimiter);
@@ -89,12 +120,26 @@ app.use('/api/', apiLimiter);
 // Setup WebRTC and Chat Socket
 setupMeetingSocket(io);
 
+// Prometheus metrics
+app.get('/metrics', metricsHandler);
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/notifications', notificationRoutes);
+
+// Friendly root route
+app.get('/', (req, res) => {
+  res.json({
+    name: 'IntellMeet API',
+    status: 'running',
+    health: '/api/health',
+    frontend: 'https://intell-meet-ai-powered-enterprise-m-ebon.vercel.app'
+  });
+});
 
 // Health Check
 app.get('/api/health', (req, res) => {
@@ -111,6 +156,14 @@ app.get('/api/health', (req, res) => {
     }
   });
 });
+
+if (process.env.ENABLE_DEBUG_ROUTES === 'true') {
+  app.get('/debug-sentry', () => {
+    throw new Error('Test error from /debug-sentry');
+  });
+}
+
+attachErrorHandlers(app);
 
 // Automatic Seed Function for Quick Demo & Evaluation
 const seedInitialData = async () => {
@@ -158,54 +211,53 @@ const seedInitialData = async () => {
         host: admin._id,
         hostName: admin.name,
         hostAvatar: admin.avatar,
-        roomCode: 'int-arch-sync-2026',
+        roomCode: 'int-arc-772-990',
+        scheduledAt: new Date(),
         duration: 45,
         status: 'completed',
         workspaceId: workspace._id,
-        scheduledAt: new Date(Date.now() - 2 * 3600000),
-        endedAt: new Date(Date.now() - 1 * 3600000),
         participants: [
-          { user: admin._id, name: admin.name, email: admin.email, avatar: admin.avatar, talkTimeSeconds: 1420 },
-          { user: member._id, name: member.name, email: member.email, avatar: member.avatar, talkTimeSeconds: 980 }
+          { user: admin._id, name: admin.name, email: admin.email, avatar: admin.avatar, role: 'Admin' },
+          { user: member._id, name: member.name, email: member.email, avatar: member.avatar, role: 'Member' }
         ],
         transcript: [
-          { speaker: admin.name, text: "Good morning team. Today we are validating our WebRTC peer-to-peer audio/video mesh and zero-cost AI fallback engine.", timestamp: new Date(Date.now() - 110 * 60000), sentiment: "positive" },
-          { speaker: member.name, text: "The WebRTC mesh latency tests look incredible—under 45ms across all local testing nodes.", timestamp: new Date(Date.now() - 105 * 60000), sentiment: "positive" },
-          { speaker: admin.name, text: "Alex, please make sure the action item auto-converter links directly to our Kanban project board.", timestamp: new Date(Date.now() - 100 * 60000), sentiment: "neutral" },
-          { speaker: member.name, text: "I'll also verify Cloudinary free tier avatar uploads and responsive layouts.", timestamp: new Date(Date.now() - 95 * 60000), sentiment: "positive" }
+          { speaker: 'Sarah Connor', text: 'Welcome everyone. Today we evaluate our zero-dependency WebRTC mesh and AI pipeline.', timestamp: new Date(Date.now() - 40 * 60000), sentiment: 'positive' },
+          { speaker: 'Alex Rivera', text: 'I have finalized the socket routing mesh. All clients stay synchronized at sub-50ms latency.', timestamp: new Date(Date.now() - 35 * 60000), sentiment: 'positive' },
+          { speaker: 'Sarah Connor', text: 'Excellent work. Next priority is connecting the AI post-meeting summary hooks to our Kanban board.', timestamp: new Date(Date.now() - 25 * 60000), sentiment: 'neutral' },
+          { speaker: 'Alex Rivera', text: 'Agreed. Action items can now be converted to draggable Kanban tasks with one click.', timestamp: new Date(Date.now() - 15 * 60000), sentiment: 'positive' }
         ],
         summary: {
-          executiveSummary: "Strategic review of IntellMeet architecture, WebRTC peer-to-peer performance, and AI-driven automated task synthesis. The team confirmed 100% free-tier deployment readiness and verified real-time transcription workflows.",
+          executiveSummary: 'The engineering team successfully validated the WebRTC real-time peer mesh and integrated AI post-meeting intelligence with zero paid external API dependencies. Key milestones include sub-50ms peer signaling, real-time transcription, and automated Kanban action item sync.',
           keyDiscussionPoints: [
-            "WebRTC peer-to-peer mesh latency performance verified under 45ms.",
-            "AI post-meeting summary extraction pipeline validated with zero paid API dependencies.",
-            "Integrated action-item-to-Kanban automated task conversion."
+            'WebRTC P2P mesh performance and latency verification (<50ms)',
+            'AI post-meeting executive summary and sentiment score generation',
+            'Seamless action item conversion directly into Kanban tasks',
+            'Fallback data mode ensuring 100% functionality without MongoDB or Cloudinary fees'
           ],
           decisionsMade: [
-            "Approved the full monorepo architecture with TanStack Query and Zustand.",
-            "Selected Tailwind CSS v4 for enterprise glassmorphic design aesthetics."
+            'Deploy full stack with graceful fallback support active across all environments',
+            'Adopt native browser SpeechRecognition API with intelligent server-side synthesis',
+            'Default enterprise users to automated Kanban synchronization workflow'
           ],
           actionItems: [
             { id: 'act-demo-1', task: 'Connect AI post-meeting summary hooks to Kanban workspace board', assignee: 'Alex Rivera', priority: 'urgent', dueDate: new Date(Date.now() + 2 * 86400000), status: 'converted' },
-            { id: 'act-demo-2', task: 'Conduct security audit on JWT token expiration and express-rate-limit', assignee: 'Sarah Connor', priority: 'high', dueDate: new Date(Date.now() + 4 * 86400000), status: 'pending' },
-            { id: 'act-demo-3', task: 'Validate Cloudinary free tier avatar asset storage', assignee: 'Alex Rivera', priority: 'medium', dueDate: new Date(Date.now() + 5 * 86400000), status: 'pending' }
+            { id: 'act-demo-2', task: 'Finalize Cloudinary free-tier media integration & base64 avatar fallback', assignee: 'Sarah Connor', priority: 'high', dueDate: new Date(Date.now() + 4 * 86400000), status: 'pending' },
+            { id: 'act-demo-3', task: 'Conduct end-to-end multi-peer WebRTC mesh stress test', assignee: 'Alex Rivera', priority: 'medium', dueDate: new Date(Date.now() + 5 * 86400000), status: 'pending' }
           ],
-          sentimentScore: 94,
-          overallSentiment: 'Highly Productive & Energized',
+          sentimentScore: 92,
+          overallSentiment: 'Decisive & Highly Aligned',
           speakerAnalytics: [
-            { speaker: 'Sarah Connor', percentage: 59, wordsCount: 520 },
-            { speaker: 'Alex Rivera', percentage: 41, wordsCount: 360 }
+            { speaker: 'Sarah Connor', wordCount: 210, talkTimePercentage: 45, sentimentRatio: { positive: 0.7, neutral: 0.3, negative: 0 } },
+            { speaker: 'Alex Rivera', wordCount: 255, talkTimePercentage: 55, sentimentRatio: { positive: 0.85, neutral: 0.15, negative: 0 } }
           ],
-          tags: ['Architecture', 'WebRTC', 'AI Summaries', 'Enterprise Ready'],
-          generatedAt: new Date()
+          tags: ['Sprint Review', 'WebRTC Architecture', 'AI Intelligence', 'Enterprise']
         }
       });
 
-      // Seed Initial Kanban Tasks
       await Task.create([
         {
           title: 'Connect AI post-meeting summary hooks to Kanban workspace board',
-          description: 'Auto-extracted from meeting "Q3 Enterprise Architecture & AI Copilot Review".',
+          description: 'Ensure converted action items from meetings immediately populate the To Do column with priority badges.',
           status: 'in-progress',
           priority: 'urgent',
           assignee: 'Alex Rivera',
@@ -213,50 +265,51 @@ const seedInitialData = async () => {
           workspaceId: workspace._id,
           workspaceName: workspace.name,
           meetingId: sampleMeeting._id,
+          meetingTitle: sampleMeeting.title,
           dueDate: new Date(Date.now() + 2 * 86400000),
-          tags: ['AI Action Item', 'Meeting Sync']
+          tags: ['AI Action Item', 'Priority']
         },
         {
-          title: 'Design high-fidelity dark mode video conferencing room UI',
-          description: 'Build sleek participant grid with audio/video toggles, screen share, and AI side panel.',
-          status: 'done',
+          title: 'Finalize Cloudinary free-tier media integration & base64 avatar fallback',
+          description: 'Provide persistent profile pictures without requiring paid cloud hosting buckets.',
+          status: 'todo',
           priority: 'high',
           assignee: 'Sarah Connor',
           creator: admin._id,
           workspaceId: workspace._id,
           workspaceName: workspace.name,
-          dueDate: new Date(Date.now() + 1 * 86400000),
-          tags: ['Frontend', 'UI/UX']
+          dueDate: new Date(Date.now() + 4 * 86400000),
+          tags: ['Storage', 'Cloudinary']
         },
         {
-          title: 'Implement WebRTC mesh signaling with Socket.io',
-          description: 'Full SDP offer/answer exchange, ICE candidate routing, and peer connection pool.',
-          status: 'done',
-          priority: 'urgent',
+          title: 'Conduct end-to-end multi-peer WebRTC mesh stress test',
+          description: 'Test concurrent video and audio tracks with simulated bandwidth constraints.',
+          status: 'todo',
+          priority: 'medium',
           assignee: 'Alex Rivera',
           creator: admin._id,
           workspaceId: workspace._id,
           workspaceName: workspace.name,
-          dueDate: new Date(Date.now() + 1 * 86400000),
-          tags: ['WebRTC', 'Real-Time']
+          dueDate: new Date(Date.now() + 5 * 86400000),
+          tags: ['WebRTC', 'QA']
         },
         {
-          title: 'Create interactive meeting analytics and productivity charts',
-          description: 'Show meeting frequency, hours saved by AI, and task completion velocity.',
-          status: 'todo',
-          priority: 'medium',
+          title: 'Publish interactive API Swagger & Postman collections',
+          description: 'Document REST routes, Socket.io signaling protocols, and JWT token authentication.',
+          status: 'done',
+          priority: 'low',
           assignee: 'Sarah Connor',
           creator: admin._id,
           workspaceId: workspace._id,
           workspaceName: workspace.name,
-          dueDate: new Date(Date.now() + 5 * 86400000),
-          tags: ['Analytics', 'Dashboard']
+          dueDate: new Date(Date.now() - 1 * 86400000),
+          tags: ['Documentation']
         },
         {
-          title: 'Conduct rate-limiting and JWT security penetration audit',
-          description: 'Ensure brute-force protection and strict role-based access control.',
-          status: 'backlog',
-          priority: 'low',
+          title: 'Implement enterprise workspace member invite & role governance',
+          description: 'Add Admin and Member role enforcement with JWT token claims.',
+          status: 'done',
+          priority: 'high',
           assignee: 'Unassigned',
           creator: admin._id,
           workspaceId: workspace._id,
@@ -277,7 +330,7 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   const dbConnected = await connectDB();
-  if (dbConnected && process.env.NODE_ENV === 'development') {
+  if (dbConnected && (process.env.NODE_ENV === 'development' || process.env.SEED_DEMO_DATA === 'true')) {
     await seedInitialData();
   }
 

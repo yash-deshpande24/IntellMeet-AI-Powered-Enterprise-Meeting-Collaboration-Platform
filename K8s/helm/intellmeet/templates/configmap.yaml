@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: {{ .Release.Namespace }}
+data:
+  PORT: {{ .Values.backend.port | quote }}
+  NODE_ENV: {{ .Values.backend.nodeEnv | quote }}
+  MONGODB_URI: "mongodb://mongo:27017/intellmeet"
+  ALLOWED_ORIGINS: {{ .Values.backend.allowedOrigins | quote }}
