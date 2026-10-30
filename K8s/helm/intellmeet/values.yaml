@@ -1,0 +1,64 @@
+# Everything you may want to change lives here.
+# Override on the command line, for example:
+#   helm install intellmeet ./K8s/helm/intellmeet -n intellmeet --create-namespace \
+#     --set secrets.jwtSecret=<long-random-string>
+
+image:
+  backend:
+    repository: intellmeet-backend
+    tag: local
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: intellmeet-frontend
+    tag: local
+    pullPolicy: IfNotPresent
+  mongo:
+    repository: mongo
+    tag: "7"
+
+backend:
+  replicas: 1                 # keep at 1 until Socket.io has a Redis adapter
+  port: 5000
+  nodeEnv: development        # development enables the demo seed data
+  allowedOrigins: "http://localhost:8080,http://127.0.0.1:8080"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+frontend:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+mongo:
+  storage: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+secrets:
+  # Development value only. Never commit a real production secret.
+  jwtSecret: "change-this-secret-for-local-kubernetes-only"
+
+autoscaling:
+  enabled: true               # needs metrics-server (minikube addons enable metrics-server)
+  frontend:
+    minReplicas: 1
+    maxReplicas: 4
+    cpuUtilization: 70
+  backend:
+    minReplicas: 1
+    maxReplicas: 1            # fixed: rooms are tracked in memory
+    cpuUtilization: 70

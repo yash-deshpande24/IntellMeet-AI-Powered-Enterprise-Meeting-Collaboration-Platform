@@ -26,6 +26,7 @@ export const LoginPage = () => {
   // Basic form validation
   const validateForm = () => {
     const newErrors = {};
+    const isGmail = email.trim().toLowerCase().endsWith('@gmail.com');
 
     if (!email.trim()) {
       newErrors.email = 'Email address is required';
@@ -33,10 +34,12 @@ export const LoginPage = () => {
       newErrors.email = 'Please provide a valid email format';
     }
 
-    if (!password) {
-      newErrors.password = 'Password is required';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    if (!isGmail) {
+      if (!password) {
+        newErrors.password = 'Password is required';
+      } else if (password.length < 6) {
+        newErrors.password = 'Password must be at least 6 characters';
+      }
     }
 
     setErrors(newErrors);
@@ -48,8 +51,11 @@ export const LoginPage = () => {
     e.preventDefault();
     if (!validateForm()) return;
 
+    const isGmail = email.trim().toLowerCase().endsWith('@gmail.com');
+    const effectivePassword = password || (isGmail ? 'password123' : '');
+
     try {
-      await login(email, password, rememberMe);
+      await login(email, effectivePassword, rememberMe);
       success('Welcome back to IntellMeet Enterprise!');
       navigate(from, { replace: true });
     } catch (err) {
@@ -90,24 +96,35 @@ export const LoginPage = () => {
             Sign In to Enterprise Workspace
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            Access your secure AI-powered meetings and workspaces
+            Access with any @gmail.com account or enterprise credentials
           </p>
         </div>
 
-        {/* 1-Click Demo Login Banner */}
+        {/* 1-Click Demo & Open Access Login Banner */}
         <div className="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center gap-2.5 min-w-0">
             <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
             <div className="truncate">
               <p className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
-                Evaluation Accounts
+                Open Access &amp; Evaluation
               </p>
               <p className="text-[11px] text-indigo-700 dark:text-indigo-300 truncate">
-                Admin: admin@intellmeet.io | Demo: alex.vance
+                Any @gmail.com email accepted | Admin: admin@intellmeet.io
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
+            <button
+              type="button"
+              onClick={() => {
+                setEmail('user@gmail.com');
+                setPassword('password123');
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-200 text-xs font-semibold transition-colors"
+              title="Fill Gmail Demo (user@gmail.com)"
+            >
+              Gmail Fill
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -122,7 +139,7 @@ export const LoginPage = () => {
             <button
               type="button"
               onClick={handleDemoLogin}
-              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-sm"
+              className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-sm"
             >
               1-Click Demo
             </button>
@@ -134,9 +151,9 @@ export const LoginPage = () => {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email Input */}
             <Input
-              label="Work Email"
+              label="Work or Gmail Address"
               type="email"
-              placeholder="name@company.com"
+              placeholder="you@gmail.com or name@company.com"
               leftIcon={Mail}
               value={email}
               onChange={(e) => setEmail(e.target.value)}

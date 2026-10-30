@@ -1,0 +1,6 @@
+apiVersion: 1
+providers:
+  - name: IntellMeet
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,5 +1,7 @@
 import { AiService } from '../services/aiService.js';
 import Meeting from '../models/Meeting.js';
+import jwt from 'jsonwebtoken';
+import { createNotification, findMentionedUsers } from '../services/notificationService.js';
 
 // Active in-memory room tracking for high-performance WebRTC mesh routing
 const activeRooms = new Map();
@@ -7,6 +9,16 @@ const activeRooms = new Map();
 export const setupMeetingSocket = (io) => {
   io.on('connection', (socket) => {
     console.log(`[Socket.io] Client connected: ${socket.id}`);
+
+    // Join a private room for this user so notifications can be pushed live
+    socket.on('register-user', ({ token }) => {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (decoded?.id) socket.join(`user:${decoded.id}`);
+      } catch {
+        /* invalid token: ignore */
+      }
+    });
 
     // Join meeting room
     socket.on('join-room', async ({ roomCode, user }) => {
@@ -41,34 +53,31 @@ export const setupMeetingSocket = (io) => {
         self: participantInfo
       });
 
-      // Notify other peers in the room about the new joiner
-      socket.to(roomCode).emit('user-joined', {
-        participant: participantInfo
-      });
+      // Broadcast new user joined to all other peers in the room
+      socket.to(roomCode).emit('user-joined', participantInfo);
 
-      console.log(`[Socket.io] ${participantInfo.name} joined room ${roomCode} (${roomParticipants.size} active)`);
+      console.log(`[Socket.io] User "${participantInfo.name}" (${socket.id}) joined room: ${roomCode}`);
     });
 
     // WebRTC Signaling: Offer
-    socket.on('offer', ({ targetSocketId, offer, callerInfo }) => {
-      io.to(targetSocketId).emit('offer', {
-        callerSocketId: socket.id,
-        offer,
-        callerInfo
+    socket.on('signal-offer', ({ targetSocketId, offer }) => {
+      socket.to(targetSocketId).emit('signal-offer', {
+        senderSocketId: socket.id,
+        offer
       });
     });
 
     // WebRTC Signaling: Answer
-    socket.on('answer', ({ targetSocketId, answer }) => {
-      io.to(targetSocketId).emit('answer', {
-        responderSocketId: socket.id,
+    socket.on('signal-answer', ({ targetSocketId, answer }) => {
+      socket.to(targetSocketId).emit('signal-answer', {
+        senderSocketId: socket.id,
         answer
       });
     });
 
     // WebRTC Signaling: ICE Candidate
-    socket.on('ice-candidate', ({ targetSocketId, candidate }) => {
-      io.to(targetSocketId).emit('ice-candidate', {
+    socket.on('signal-ice-candidate', ({ targetSocketId, candidate }) => {
+      socket.to(targetSocketId).emit('signal-ice-candidate', {
         senderSocketId: socket.id,
         candidate
       });
@@ -86,6 +95,21 @@ export const setupMeetingSocket = (io) => {
       };
 
       io.to(roomCode).emit('chat-message', msgData);
+
+      // Notify users mentioned with @Name
+      findMentionedUsers(message).then((users) => {
+        users.forEach((u) => {
+          if (String(u._id) === String(socket.user?.id)) return;
+          createNotification({
+            io,
+            userId: u._id,
+            type: 'mention',
+            title: `${msgData.sender} mentioned you`,
+            message: String(message).slice(0, 120),
+            link: `/meetings/room/${roomCode}`,
+          });
+        });
+      }).catch(() => {});
 
       // Save to meeting record if available in background
       Meeting.findOneAndUpdate(

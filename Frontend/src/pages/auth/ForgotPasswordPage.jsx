@@ -20,7 +20,7 @@ export const ForgotPasswordPage = () => {
     e.preventDefault();
 
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
-      setFormError('Please enter a valid business email');
+      setFormError('Please enter a valid email address');
       return;
     }
     setFormError('');
@@ -48,10 +48,10 @@ export const ForgotPasswordPage = () => {
             </span>
           </Link>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Reset Enterprise Password
+            Reset Password
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            Enter your work email address and we'll send a secure password reset link
+            Enter your email address and we'll send a secure password reset link
           </p>
         </div>
 
@@ -86,9 +86,9 @@ export const ForgotPasswordPage = () => {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
               <Input
-                label="Registered Work Email"
+                label="Email Address"
                 type="email"
-                placeholder="name@enterprise.com"
+                placeholder="you@gmail.com or name@enterprise.com"
                 leftIcon={Mail}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}

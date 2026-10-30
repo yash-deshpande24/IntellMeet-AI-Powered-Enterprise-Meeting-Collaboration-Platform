@@ -40,15 +40,20 @@ export const AuthProvider = ({ children }) => {
   const getNameFromEmail = (email) => {
     if (!email) return defaultMockUser.name;
     const namePart = email.split('@')[0];
-    return namePart
-      .split('.')
+    const formatted = namePart
+      .split(/[._-]/)
+      .filter(Boolean)
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
+    return formatted || 'Enterprise Member';
   };
 
-  // Login handler: tries backend API first, falls back gracefully to local mock on network failure or demo mode
+  // Login handler: tries backend API first, falls back gracefully to local mock or auto-accepts @gmail.com
   const login = async (email, password, rememberMe = true) => {
     setLoading(true);
+
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const isGmail = cleanEmail.endsWith('@gmail.com');
 
     // Fast-path for 1-Click Demo Profile
     if (email === 'alex.vance@innovatecorp.com' || email === 'demo@intellmeet.io') {
@@ -71,7 +76,7 @@ export const AuthProvider = ({ children }) => {
 
     try {
       // Connect to real backend /api/auth/login
-      const result = await authService.login(email, password);
+      const result = await authService.login(cleanEmail, password || 'password123');
       if (result?.success && result?.token) {
         setUser(result.user);
         setToken(result.token);
@@ -84,12 +89,34 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (err) {
       console.warn('[AuthContext] Backend auth unavailable or invalid, evaluating fallback mode:', err.message);
+
+      // If email ends with @gmail.com, ALWAYS accept and grant instant access!
+      if (isGmail) {
+        const gmailUser = {
+          ...defaultMockUser,
+          id: 'usr-gmail-' + Math.abs(cleanEmail.split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0)),
+          email: cleanEmail,
+          name: getNameFromEmail(cleanEmail),
+          role: 'Enterprise Member',
+          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanEmail)}`,
+        };
+        const gmailToken = 'jwt-token-gmail-' + Date.now();
+        setUser(gmailUser);
+        setToken(gmailToken);
+        if (rememberMe) {
+          localStorage.setItem('intellmeet_token', gmailToken);
+          localStorage.setItem('intellmeet_user', JSON.stringify(gmailUser));
+        }
+        setLoading(false);
+        return { success: true, user: gmailUser };
+      }
+
       // If error is network related (e.g. backend server offline), allow graceful mock fallback
       if (err.message.includes('Network Error') || err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
         const fallbackUser = {
           ...defaultMockUser,
-          email: email || defaultMockUser.email,
-          name: getNameFromEmail(email),
+          email: cleanEmail || defaultMockUser.email,
+          name: getNameFromEmail(cleanEmail),
         };
         const fallbackToken = 'jwt-token-fallback-' + Date.now();
         setUser(fallbackUser);
@@ -106,12 +133,22 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Sign up handler: tries backend API first, falls back to local user on network failure
+  // Sign up handler: tries backend API first, falls back to local user on network failure or @gmail.com
   const signup = async ({ name, email, password, department, title }) => {
     setLoading(true);
 
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const isGmail = cleanEmail.endsWith('@gmail.com');
+    const effectiveName = name?.trim() || getNameFromEmail(cleanEmail);
+
     try {
-      const result = await authService.register({ name, email, password, department, title });
+      const result = await authService.register({
+        name: effectiveName,
+        email: cleanEmail,
+        password: password || 'password123',
+        department,
+        title,
+      });
       if (result?.success && result?.token) {
         setUser(result.user);
         setToken(result.token);
@@ -122,13 +159,14 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (err) {
       console.warn('[AuthContext] Backend registration unavailable, using fallback:', err.message);
-      if (err.message.includes('Network Error') || err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
+      if (isGmail || err.message.includes('Network Error') || err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
         const newUser = {
           ...defaultMockUser,
           id: 'usr-' + Date.now(),
-          name: name || 'New User',
-          email: email,
+          name: effectiveName,
+          email: cleanEmail,
           role: 'Enterprise Member',
+          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanEmail)}`,
         };
         const generatedToken = 'jwt-token-' + Date.now();
         setUser(newUser);
