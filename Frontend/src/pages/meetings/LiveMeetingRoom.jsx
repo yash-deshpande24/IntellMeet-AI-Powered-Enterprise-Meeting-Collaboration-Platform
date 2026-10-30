@@ -29,6 +29,8 @@ import {
   Check,
   ShieldCheck,
   MoreVertical,
+  HelpCircle,
+  Lightbulb,
 } from 'lucide-react';
 
 import { getSocket } from '../../services/socket';
@@ -576,11 +578,13 @@ export const LiveMeetingRoom = () => {
                 {/* AI Responses History */}
                 {aiResponses.map((res, i) => (
                   <div key={i} className="space-y-2">
-                    <div className="text-[11px] font-semibold text-slate-300 bg-slate-800/70 p-2.5 rounded-xl border border-slate-700/60">
-                      ❓ "{res.q}"
+                    <div className="text-[11px] font-semibold text-slate-300 bg-slate-800/70 p-2.5 rounded-xl border border-slate-700/60 flex items-start gap-2">
+                      <HelpCircle className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                      <span>"{res.q}"</span>
                     </div>
-                    <div className="text-xs text-purple-100 bg-purple-950/40 p-3 rounded-xl border border-purple-800/40 leading-relaxed">
-                      💡 {res.a}
+                    <div className="text-xs text-purple-100 bg-purple-950/40 p-3 rounded-xl border border-purple-800/40 leading-relaxed flex items-start gap-2">
+                      <Lightbulb className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+                      <span>{res.a}</span>
                     </div>
                   </div>
                 ))}

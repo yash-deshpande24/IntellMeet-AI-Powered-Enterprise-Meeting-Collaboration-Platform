@@ -163,7 +163,7 @@ export const DashboardOverview = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Good afternoon, {user?.name?.split(' ')[0] || 'Alex'} 👋
+              Good afternoon, {user?.name?.split(' ')[0] || 'Alex'}
             </h1>
             <Badge variant="indigo" size="sm">Workspace Admin</Badge>
           </div>
