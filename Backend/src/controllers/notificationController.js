@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Notification from '../models/Notification.js';
 
 const currentUserId = (req) => req.user._id || req.user.id;
@@ -18,6 +19,9 @@ export const getNotifications = async (req, res) => {
 
 export const markRead = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ success: false, message: 'Notification not found' });
+    }
     const notification = await Notification.findOneAndUpdate(
       { _id: req.params.id, user: currentUserId(req) },
       { read: true },
