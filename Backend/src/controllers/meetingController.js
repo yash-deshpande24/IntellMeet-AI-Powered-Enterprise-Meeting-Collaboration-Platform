@@ -1,8 +1,17 @@
+import mongoose from 'mongoose';
 import Meeting from '../models/Meeting.js';
 import Task from '../models/Task.js';
 import { AiService } from '../services/aiService.js';
 import { createNotification, findUserByName } from '../services/notificationService.js';
 import { v4 as uuidv4 } from 'uuid';
+
+
+// A meeting id from the URL must look like a MongoDB id, otherwise the database throws a 500
+const badId = (res, id) => {
+  if (mongoose.Types.ObjectId.isValid(id)) return false;
+  res.status(404).json({ success: false, message: 'Meeting not found' });
+  return true;
+};
 
 const generateRoomCode = () => {
   const chars = 'abcdefghijklmnopqrstuvwxyz';
@@ -109,6 +118,7 @@ export const getMeetingByCode = async (req, res) => {
 export const getMeetingById = async (req, res) => {
   try {
     const { id } = req.params;
+    if (badId(res, id)) return;
     const meeting = await Meeting.findById(id)
       .populate('host', 'name email avatar department')
       .populate('workspaceId', 'name color');
@@ -131,6 +141,7 @@ export const updateMeetingStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
+    if (badId(res, id)) return;
     const meeting = await Meeting.findById(id);
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
@@ -165,6 +176,7 @@ export const updateMeetingStatus = async (req, res) => {
 export const triggerAiSummary = async (req, res) => {
   try {
     const { id } = req.params;
+    if (badId(res, id)) return;
     const meeting = await Meeting.findById(id);
 
     if (!meeting) {
@@ -212,6 +224,7 @@ export const saveTranscriptItem = async (req, res) => {
     const { id } = req.params;
     const { speaker, text, sentiment, confidence, avatar } = req.body;
 
+    if (badId(res, id)) return;
     const meeting = await Meeting.findById(id);
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
@@ -243,6 +256,7 @@ export const convertActionItemToTask = async (req, res) => {
     const { meetingId, actionItemId } = req.params;
     const { workspaceId, priority, assignee, dueDate } = req.body;
 
+    if (badId(res, meetingId)) return;
     const meeting = await Meeting.findById(meetingId);
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
