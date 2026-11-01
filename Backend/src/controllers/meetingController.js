@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Meeting from '../models/Meeting.js';
 import Task from '../models/Task.js';
 import { AiService } from '../services/aiService.js';
@@ -71,15 +72,34 @@ export const getMeetings = async (req, res) => {
   }
 };
 
+export const getMeetingByCode = async (req, res) => {
+  try {
+    const { code } = req.params;
+    const meeting = await Meeting.findOne({ roomCode: code }).populate('workspaceId', 'name color');
+
+    if (!meeting) {
+      return res.status(404).json({ success: false, message: 'Meeting room not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      meeting
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const getMeetingById = async (req, res) => {
   try {
     const { id } = req.params;
     let meeting = null;
 
-    if (id.startsWith('int-')) {
-      meeting = await Meeting.findOne({ roomCode: id }).populate('workspaceId', 'name color');
-    } else {
+    if (mongoose.Types.ObjectId.isValid(id)) {
       meeting = await Meeting.findById(id).populate('workspaceId', 'name color');
+    }
+    if (!meeting) {
+      meeting = await Meeting.findOne({ roomCode: id }).populate('workspaceId', 'name color');
     }
 
     if (!meeting) {
@@ -99,12 +119,15 @@ export const updateMeetingStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const update = { status, endedAt: status === 'completed' ? new Date() : undefined };
 
-    const meeting = await Meeting.findByIdAndUpdate(
-      id,
-      { status, endedAt: status === 'completed' ? new Date() : undefined },
-      { new: true }
-    );
+    let meeting = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      meeting = await Meeting.findByIdAndUpdate(id, update, { new: true });
+    }
+    if (!meeting) {
+      meeting = await Meeting.findOneAndUpdate({ roomCode: id }, update, { new: true });
+    }
 
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
@@ -124,7 +147,14 @@ export const generateMeetingSummary = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const meeting = await Meeting.findById(id);
+    let meeting = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      meeting = await Meeting.findById(id);
+    }
+    if (!meeting) {
+      meeting = await Meeting.findOne({ roomCode: id });
+    }
+
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
     }
@@ -165,12 +195,21 @@ export const generateMeetingSummary = async (req, res) => {
   }
 };
 
+export const triggerAiSummary = generateMeetingSummary;
+
 export const saveTranscriptItem = async (req, res) => {
   try {
     const { id } = req.params;
     const { speaker, text, sentiment, confidence, avatar } = req.body;
 
-    const meeting = await Meeting.findById(id);
+    let meeting = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      meeting = await Meeting.findById(id);
+    }
+    if (!meeting) {
+      meeting = await Meeting.findOne({ roomCode: id });
+    }
+
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
     }
@@ -199,14 +238,21 @@ export const saveTranscriptItem = async (req, res) => {
 export const convertActionItemToTask = async (req, res) => {
   try {
     const { meetingId, actionItemId } = req.params;
-    const { workspaceId, priority, assignee, dueDate } = req.body;
+    const { workspaceId, priority, assignee, dueDate } = req.body || {};
 
-    const meeting = await Meeting.findById(meetingId);
+    let meeting = null;
+    if (mongoose.Types.ObjectId.isValid(meetingId)) {
+      meeting = await Meeting.findById(meetingId);
+    }
+    if (!meeting) {
+      meeting = await Meeting.findOne({ roomCode: meetingId });
+    }
+
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
     }
 
-    const actionItem = meeting.summary.actionItems.find(a => a.id === actionItemId || a._id?.toString() === actionItemId);
+    const actionItem = meeting.summary?.actionItems?.find(a => a.id === actionItemId || a._id?.toString() === actionItemId);
     if (!actionItem) {
       return res.status(404).json({ success: false, message: 'Action item not found in meeting' });
     }
@@ -218,6 +264,7 @@ export const convertActionItemToTask = async (req, res) => {
       priority: priority || actionItem.priority || 'medium',
       assignee: assignee || actionItem.assignee || 'Unassigned',
       creator: req.user._id || req.user.id,
+      workspaceId: workspaceId || meeting.workspaceId || null,
       meetingId: meeting._id,
       meetingTitle: meeting.title,
       actionItemId: actionItem.id,
