@@ -27,7 +27,8 @@ import Task from './models/Task.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-dotenv.config(); // shared defaults from Backend/.env
+dotenv.config({ path: path.join(__dirname, '../.env') }); // shared defaults from Backend/.env
+dotenv.config(); // fallback to current working directory .env if present
 dotenv.config({ path: path.join(__dirname, '../.env.local'), override: true }); // private overrides
 
 initSentry(); // error tracking
@@ -344,3 +345,5 @@ const startServer = async () => {
 };
 
 startServer();
+
+export { app, server, startServer };

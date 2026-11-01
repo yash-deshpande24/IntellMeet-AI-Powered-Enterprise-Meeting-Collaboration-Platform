@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Meeting from '../models/Meeting.js';
 import Task from '../models/Task.js';
 import { AiService } from '../services/aiService.js';
@@ -57,9 +58,9 @@ export const getMeetings = async (req, res) => {
     if (status) query.status = status;
 
     const meetings = await Meeting.find(query)
-      .populate('host', 'name email avatar department')
-      .sort({ createdAt: -1 })
-      .limit(Number(limit));
+      .sort({ scheduledAt: -1 })
+      .limit(Number(limit))
+      .populate('workspaceId', 'name color');
 
     res.status(200).json({
       success: true,
@@ -74,27 +75,10 @@ export const getMeetings = async (req, res) => {
 export const getMeetingByCode = async (req, res) => {
   try {
     const { code } = req.params;
-    let meeting = await Meeting.findOne({ roomCode: code })
-      .populate('host', 'name email avatar department')
-      .populate('workspaceId', 'name color');
+    const meeting = await Meeting.findOne({ roomCode: code }).populate('workspaceId', 'name color');
 
     if (!meeting) {
-      // Auto-create room if joining ad-hoc
-      meeting = await Meeting.create({
-        title: `Enterprise Collab - ${code}`,
-        host: req.user._id || req.user.id,
-        hostName: req.user.name || 'Host',
-        hostAvatar: req.user.avatar || '',
-        roomCode: code,
-        status: 'active',
-        participants: [{
-          user: req.user._id || req.user.id,
-          name: req.user.name || 'Host',
-          email: req.user.email,
-          avatar: req.user.avatar || '',
-          joinedAt: new Date()
-        }]
-      });
+      return res.status(404).json({ success: false, message: 'Meeting room not found' });
     }
 
     res.status(200).json({
@@ -109,12 +93,17 @@ export const getMeetingByCode = async (req, res) => {
 export const getMeetingById = async (req, res) => {
   try {
     const { id } = req.params;
-    const meeting = await Meeting.findById(id)
-      .populate('host', 'name email avatar department')
-      .populate('workspaceId', 'name color');
+    let meeting = null;
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      meeting = await Meeting.findById(id).populate('workspaceId', 'name color');
+    }
+    if (!meeting) {
+      meeting = await Meeting.findOne({ roomCode: id }).populate('workspaceId', 'name color');
+    }
 
     if (!meeting) {
-      return res.status(404).json({ success: false, message: 'Meeting not found' });
+      return res.status(404).json({ success: false, message: 'Meeting room not found' });
     }
 
     res.status(200).json({
@@ -130,31 +119,23 @@ export const updateMeetingStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const update = { status, endedAt: status === 'completed' ? new Date() : undefined };
 
-    const meeting = await Meeting.findById(id);
+    let meeting = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      meeting = await Meeting.findByIdAndUpdate(id, update, { new: true });
+    }
+    if (!meeting) {
+      meeting = await Meeting.findOneAndUpdate({ roomCode: id }, update, { new: true });
+    }
+
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
     }
 
-    meeting.status = status;
-    if (status === 'completed') {
-      meeting.endedAt = new Date();
-      // Auto-generate AI summary if empty
-      if (!meeting.summary?.executiveSummary) {
-        const summary = await AiService.generateMeetingSummary({
-          title: meeting.title,
-          transcript: meeting.transcript,
-          participants: meeting.participants
-        });
-        meeting.summary = summary;
-      }
-    }
-
-    await meeting.save();
-
     res.status(200).json({
       success: true,
-      message: `Meeting updated to ${status}`,
+      message: `Meeting status updated to ${status}`,
       meeting
     });
   } catch (error) {
@@ -162,10 +143,17 @@ export const updateMeetingStatus = async (req, res) => {
   }
 };
 
-export const triggerAiSummary = async (req, res) => {
+export const generateMeetingSummary = async (req, res) => {
   try {
     const { id } = req.params;
-    const meeting = await Meeting.findById(id);
+
+    let meeting = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      meeting = await Meeting.findById(id);
+    }
+    if (!meeting) {
+      meeting = await Meeting.findOne({ roomCode: id });
+    }
 
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
@@ -180,7 +168,7 @@ export const triggerAiSummary = async (req, res) => {
     meeting.summary = summary;
     await meeting.save();
 
-    // Day 20: tell the host and participants that the summary is ready
+    // Notify the host and participants that the summary is ready
     const userIds = new Set(
       [meeting.host, ...meeting.participants.map((p) => p.user)]
         .filter(Boolean)
@@ -207,12 +195,21 @@ export const triggerAiSummary = async (req, res) => {
   }
 };
 
+export const triggerAiSummary = generateMeetingSummary;
+
 export const saveTranscriptItem = async (req, res) => {
   try {
     const { id } = req.params;
     const { speaker, text, sentiment, confidence, avatar } = req.body;
 
-    const meeting = await Meeting.findById(id);
+    let meeting = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      meeting = await Meeting.findById(id);
+    }
+    if (!meeting) {
+      meeting = await Meeting.findOne({ roomCode: id });
+    }
+
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
     }
@@ -241,14 +238,21 @@ export const saveTranscriptItem = async (req, res) => {
 export const convertActionItemToTask = async (req, res) => {
   try {
     const { meetingId, actionItemId } = req.params;
-    const { workspaceId, priority, assignee, dueDate } = req.body;
+    const { workspaceId, priority, assignee, dueDate } = req.body || {};
 
-    const meeting = await Meeting.findById(meetingId);
+    let meeting = null;
+    if (mongoose.Types.ObjectId.isValid(meetingId)) {
+      meeting = await Meeting.findById(meetingId);
+    }
+    if (!meeting) {
+      meeting = await Meeting.findOne({ roomCode: meetingId });
+    }
+
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
     }
 
-    const actionItem = meeting.summary.actionItems.find(a => a.id === actionItemId || a._id?.toString() === actionItemId);
+    const actionItem = meeting.summary?.actionItems?.find(a => a.id === actionItemId || a._id?.toString() === actionItemId);
     if (!actionItem) {
       return res.status(404).json({ success: false, message: 'Action item not found in meeting' });
     }
@@ -260,6 +264,7 @@ export const convertActionItemToTask = async (req, res) => {
       priority: priority || actionItem.priority || 'medium',
       assignee: assignee || actionItem.assignee || 'Unassigned',
       creator: req.user._id || req.user.id,
+      workspaceId: workspaceId || meeting.workspaceId || null,
       meetingId: meeting._id,
       meetingTitle: meeting.title,
       actionItemId: actionItem.id,
@@ -272,7 +277,7 @@ export const convertActionItemToTask = async (req, res) => {
     actionItem.convertedTaskId = task._id;
     await meeting.save();
 
-    // Day 20: notify the person the action item was assigned to
+    // Notify the person the action item was assigned to
     const recipient = await findUserByName(task.assignee);
     if (recipient && String(recipient._id) !== String(req.user._id || req.user.id)) {
       await createNotification({

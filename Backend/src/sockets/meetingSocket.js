@@ -5,13 +5,36 @@ import { createNotification, findMentionedUsers } from '../services/notification
 
 // Active in-memory room tracking for high-performance WebRTC mesh routing
 const activeRooms = new Map();
+const roomTranscripts = new Map();
 
 export const setupMeetingSocket = (io) => {
   io.on('connection', (socket) => {
     console.log(`[Socket.io] Client connected: ${socket.id}`);
 
     // Join a private room for this user so notifications can be pushed live
+    const registerUserToken = (token) => {
+      if (!token) return;
+      if (token.startsWith('demo-') || token.startsWith('jwt-token-')) {
+        const isMember = token.includes('member') || token.includes('gmail');
+        socket.join(`user:${isMember ? '65f000000000000000000002' : '65f000000000000000000001'}`);
+        return;
+      }
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const uid = decoded?.id || decoded?._id;
+        if (uid) socket.join(`user:${uid}`);
+      } catch {
+        /* invalid token: ignore */
+      }
+    };
+
+    if (socket.handshake?.auth?.token) {
+      registerUserToken(socket.handshake.auth.token);
+    }
+
     socket.on('register-user', ({ token }) => {
+      registerUserToken(token);
+      return;
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         if (decoded?.id) socket.join(`user:${decoded.id}`);
@@ -54,7 +77,10 @@ export const setupMeetingSocket = (io) => {
       });
 
       // Broadcast new user joined to all other peers in the room
-      socket.to(roomCode).emit('user-joined', participantInfo);
+      socket.to(roomCode).emit('user-joined', {
+        ...participantInfo,
+        participant: participantInfo
+      });
 
       console.log(`[Socket.io] User "${participantInfo.name}" (${socket.id}) joined room: ${roomCode}`);
     });
@@ -192,6 +218,9 @@ export const setupMeetingSocket = (io) => {
 
       io.to(roomCode).emit('receive-transcript-chunk', chunk);
 
+      if (!roomTranscripts.has(roomCode)) roomTranscripts.set(roomCode, []);
+      roomTranscripts.get(roomCode).push(chunk);
+
       // Persist to meeting transcript array
       Meeting.findOneAndUpdate(
         { roomCode },
@@ -203,7 +232,8 @@ export const setupMeetingSocket = (io) => {
     socket.on('ask-ai-copilot', async ({ roomCode, question, meetingTitle }) => {
       const response = await AiService.answerMeetingCopilot({
         question,
-        meetingContext: { title: meetingTitle || 'Meeting' }
+        meetingContext: { title: meetingTitle || 'Meeting' },
+        transcript: roomTranscripts.get(roomCode) || []
       });
 
       io.to(roomCode).emit('ai-copilot-response', {
@@ -228,6 +258,7 @@ export const setupMeetingSocket = (io) => {
 
         if (roomParticipants.size === 0) {
           activeRooms.delete(roomCode);
+          roomTranscripts.delete(roomCode);
         }
       }
       console.log(`[Socket.io] Client disconnected: ${socket.id}`);

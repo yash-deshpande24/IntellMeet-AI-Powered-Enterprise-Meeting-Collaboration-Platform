@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { uploadMedia } from '../config/cloudinary.js';
@@ -210,7 +211,11 @@ export const login = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id || req.user.id);
+    const userId = req.user._id || req.user.id;
+    let user = null;
+    if (mongoose.Types.ObjectId.isValid(userId)) {
+      user = await User.findById(userId);
+    }
     if (!user) {
       return res.status(200).json({
         success: true,
