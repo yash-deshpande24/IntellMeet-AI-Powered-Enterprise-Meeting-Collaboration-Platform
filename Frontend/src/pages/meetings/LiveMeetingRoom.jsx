@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMeeting } from '../../context/MeetingContext';
 import { useAuth } from '../../context/AuthContext';
@@ -6,7 +6,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { Avatar } from '../../components/common/Avatar';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
-import { Modal } from '../../components/common/Modal';
+import { Modal } from '../../components/common/Modal';  
 import {
   Mic,
   MicOff,
@@ -37,6 +37,7 @@ import { getSocket } from '../../services/socket';
 import { meetingService } from '../../services/meetingService';
 
 // Real video tile for a participant (local or remote peer)
+// Real video tile for a participant (local or remote peer)
 const VideoTile = ({ participant, isHandRaised }) => {
   const videoRef = useRef(null);
 
@@ -49,32 +50,30 @@ const VideoTile = ({ participant, isHandRaised }) => {
   const hasVideo = participant.isCameraOn && participant.stream;
 
   return (
-    <div
-      className={`relative w-full h-full min-h-[200px] max-h-[380px] rounded-3xl bg-slate-900 overflow-hidden border-2 transition-all duration-200 flex items-center justify-center group ${
-        participant.isMicOn ? 'border-slate-700' : 'border-slate-800/80'
-      }`}
-    >
+   <div className="relative w-full max-w-[850px] aspect-video mx-auto overflow-hidden rounded-3xl bg-black border border-slate-700">
       {/* Real Video Stream or Avatar fallback */}
       {hasVideo ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={participant.isMe} // muted for self to avoid echo
-          className={`w-full h-full object-cover ${participant.isMe ? 'scale-x-[-1]' : ''}`}
-        />
+     <video
+  ref={videoRef}
+  autoPlay
+  playsInline
+  muted={participant.isMe}
+  className={`w-full h-full object-contain ${
+    participant.isMe ? 'scale-x-[-1]' : ''
+  }`}
+/>
       ) : (
-        <div className="flex flex-col items-center gap-3">
-          <Avatar name={participant.name} size="xl" />
-          <span className="text-xs text-slate-400 font-medium">Camera is off</span>
-        </div>
+          <div className="relative w-full flex justify-center items-center mt-3 mb-3 z-50">
+      <Avatar name={participant.name} size="xl" />
+    </div>
       )}
 
       {/* Top overlay badge: Hand Raised */}
       <div className="absolute top-3 left-3 flex items-center gap-2 z-10">
         {participant.isMe && isHandRaised && (
           <span className="px-2 py-0.5 rounded-md bg-amber-500 text-[10px] font-bold text-slate-950 flex items-center gap-1 animate-bounce">
-            <Hand className="w-3 h-3" /> Hand Raised
+            <Hand className="w-3 h-3" />
+            Hand Raised
           </span>
         )}
       </div>
@@ -82,8 +81,12 @@ const VideoTile = ({ participant, isHandRaised }) => {
       {/* Bottom Overlay: Participant Name & Audio Status */}
       <div className="absolute bottom-3 inset-x-3 flex items-center justify-between z-10">
         <div className="px-2.5 py-1 rounded-xl bg-slate-950/80 backdrop-blur-md text-xs font-semibold text-white flex items-center gap-2 border border-slate-800/80">
-          <span className="truncate max-w-[150px]">{participant.name}</span>
-          <span className="text-[10px] text-slate-400 font-normal">({participant.role || 'Member'})</span>
+          <span className="truncate max-w-[150px]">
+            {participant.name}
+          </span>
+          <span className="text-[10px] text-slate-400 font-normal">
+            ({participant.role || 'Member'})
+          </span>
         </div>
 
         <div className="p-1.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/80">
@@ -135,29 +138,48 @@ export const LiveMeetingRoom = () => {
 
   // Initialize Socket.io room connection on enter and cleanup on leave
   useEffect(() => {
-    const roomCode = id || 'meet-102';
-    joinMeetingRoom(roomCode, user);
+  const roomCode = id || 'meet-102';
+  joinMeetingRoom(roomCode, user);
 
-    const socket = getSocket();
-    if (socket) {
-      socket.on('ai-copilot-response', (res) => {
-        setAiResponses((prev) => [
-          ...prev,
-          {
-            q: res.question,
-            a: res.answer,
-            time: new Date(res.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          },
-        ]);
-        success('IntellBot synthesized an answer from backend AI engine');
-      });
+  const socket = getSocket();
+
+  const handleAiResponse = (res) => {
+    setAiResponses((prev) => [
+      ...prev,
+      {
+        q: res.question,
+        a: res.answer,
+        time: new Date(res.timestamp).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      },
+    ]);
+    success('IntellBot synthesized an answer from backend AI engine');
+  };
+
+  // joinMeetingRoom async असल्यामुळे socket तयार झाल्यावर listener जोडा
+  let cancelled = false;
+
+  const attachListener = () => {
+    if (cancelled) return;
+
+    const currentSocket = getSocket();
+    if (currentSocket) {
+      currentSocket.off('ai-copilot-response', handleAiResponse);
+      currentSocket.on('ai-copilot-response', handleAiResponse);
     }
+  };
 
-    return () => {
-      leaveMeetingRoom();
-    };
-  }, [id]);
+  attachListener();
 
+  return () => {
+    cancelled = true;
+    const currentSocket = getSocket();
+    currentSocket?.off('ai-copilot-response', handleAiResponse);
+    leaveMeetingRoom();
+  };
+}, [id]);
   // Timer counter
   useEffect(() => {
     const timer = setInterval(() => {
@@ -265,34 +287,69 @@ export const LiveMeetingRoom = () => {
         </div>
 
         {/* Video Grid Tiles */}
-        <div
-          className={`flex-1 grid gap-3 sm:gap-4 items-center justify-center auto-rows-fr overflow-y-auto ${
-            participants.length <= 1
-              ? 'grid-cols-1'
-              : participants.length === 2
-              ? 'grid-cols-1 md:grid-cols-2'
-              : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-2'
-          }`}
-        >
-          {participants.length === 0 ? (
-            <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
-              <span className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-              <p className="text-sm">Connecting to room...</p>
-            </div>
-          ) : (
-            participants.map((participant) => (
-              <VideoTile
-                key={participant.id}
-                participant={participant}
-                isHandRaised={isHandRaised}
-              />
-            ))
-          )}
+       <div className="flex-1 w-full min-h-[calc(100vh-180px)] overflow-y-auto px-4 py-6 flex items-center justify-center">
+
+  {participants.length === 0 ? (
+    <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
+      <span className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+      <p className="text-sm">Connecting to room...</p>
+    </div>
+  ) : participants.length === 1 ? (
+
+    // Single participant - Google Meet style
+    <div className="w-full flex justify-center items-center">
+      <div className="w-full max-w-[1100px]">
+        <VideoTile
+          participant={participants[0]}
+          isHandRaised={isHandRaised}
+        />
+      </div>
+    </div>
+
+  ) : (
+
+    // Multiple participants - Responsive grid
+   <div className="flex-1 w-full flex flex-col items-center justify-center px-4 py-4">
+
+  {participants.length === 0 ? (
+    <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
+      <span className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+      <p className="text-sm">Connecting to room...</p>
+    </div>
+  ) : (
+    <div className="w-full flex justify-center items-center">
+      {participants.length === 1 ? (
+        <div className="w-full max-w-[850px]">
+          <VideoTile
+            participant={participants[0]}
+            isHandRaised={isHandRaised}
+          />
         </div>
+      ) : (
+        <div className="w-full max-w-[1200px] grid grid-cols-1 md:grid-cols-2 gap-4">
+          {participants.map((participant) => (
+            <VideoTile
+              key={participant.id}
+              participant={participant}
+              isHandRaised={isHandRaised}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )}
+
+</div>
+
+  )}
+
+</div>
 
         {/* Bottom Floating Meeting Control Bar */}
-        <div className="pt-4 flex items-center justify-center z-30">
-          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-2.5 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl shadow-2xl">
+        <div className="w-full flex justify-center items-center py-4 mx-auto relative z-50">
+          <div className="flex items-center justify-center rounded-2xl bg-slate-900/90 border border-slate-800">
+  {/* Existing participants / VideoTile section */}
+</div>
             {/* Mic Toggle */}
             <button
               onClick={toggleMic}
@@ -318,6 +375,10 @@ export const LiveMeetingRoom = () => {
             >
               {isCameraOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
             </button>
+
+            {/* Camera Toggle */}
+
+
 
             {/* Screen Share */}
             <button
@@ -437,7 +498,6 @@ export const LiveMeetingRoom = () => {
               <span className="hidden sm:inline">Leave</span>
             </button>
           </div>
-        </div>
       </div>
 
       {/* Right Drawer (Chat / Participants / AI Bot) */}
