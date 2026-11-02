@@ -98,9 +98,29 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
       'http://localhost:3000'
     ];
 
+
+const isOriginAllowed = (origin, callback) => {
+  if (!origin) return callback(null, true);
+  if (!isProduction) return callback(null, true);
+  if (allowedOrigins.includes(origin)) return callback(null, true);
+  try {
+    const host = new URL(origin).hostname;
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      /^10\.\d+\.\d+\.\d+$/.test(host) ||
+      /^192\.168\.\d+\.\d+$/.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(host)
+    ) {
+      return callback(null, true);
+    }
+  } catch {}
+  return callback(new Error('Origin ' + origin + ' not allowed by CORS'));
+};
+
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: isOriginAllowed,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     credentials: true
   }
@@ -138,7 +158,7 @@ app.use((req, res, next) => {
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: isOriginAllowed,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     credentials: true
   })
@@ -498,7 +518,7 @@ const startServer = async () => {
     await seedInitialData();
   }
 
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log('====================================================');
     console.log(`🚀 IntellMeet Enterprise Server running on port ${PORT}`);
     console.log('📡 Socket.io WebRTC signaling endpoint active');

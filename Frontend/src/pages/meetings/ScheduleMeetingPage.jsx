@@ -52,6 +52,7 @@ export const ScheduleMeetingPage = () => {
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedLocalLink, setCopiedLocalLink] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [scheduledModal, setScheduledModal] = useState(null);
 
@@ -95,15 +96,21 @@ export const ScheduleMeetingPage = () => {
       const roomCode = res?.roomCode || meetingData.roomCode || 'meet-' + Date.now().toString(36);
       const passcode = res?.passcode ?? (formData.requirePasscode ? formData.passcode : '');
       const clientBase = window.location.origin;
-      const meetingLink = res?.meetingLink || `${clientBase}/meetings/lobby/${roomCode}${passcode ? `?pwd=${passcode}` : ''}`;
+      const fallbackLan = clientBase.includes('localhost') ? 'http://10.180.227.102:5173' : clientBase;
+      const networkMeetingLink = res?.networkMeetingLink || res?.meetingLink || `${fallbackLan}/meetings/lobby/${roomCode}${passcode ? `?pwd=${passcode}` : ''}`;
+      const localMeetingLink = res?.localMeetingLink || `http://localhost:5173/meetings/lobby/${roomCode}${passcode ? `?pwd=${passcode}` : ''}`;
+      const meetingLink = networkMeetingLink;
       
       const inviteText = res?.invitationText || `
 ${formData.title}
 Time: ${scheduledAt.toLocaleString()}
 Duration: ${formData.duration} minutes
 
-Join IntellMeet Meeting:
-${meetingLink}
+Join from Any Laptop / Phone on Network (No installation required):
+${networkMeetingLink}
+
+Join from Host Computer (Localhost):
+${localMeetingLink}
 
 Meeting ID: ${roomCode}
 Passcode: ${passcode || 'None'}
@@ -117,6 +124,8 @@ Passcode: ${passcode || 'None'}
         roomCode,
         passcode,
         meetingLink,
+        networkMeetingLink,
+        localMeetingLink,
         invitedEmails: res?.invitedEmails || formData.participants.split(/[,;\s]+/).filter(Boolean),
         emailStatus: res?.emailStatus || {},
         inviteText,
@@ -159,6 +168,14 @@ Passcode: ${formData.passcode || 'None'}
     }
   };
 
+  
+  const handleCopyLocalLink = () => {
+    const link = scheduledModal?.localMeetingLink || scheduledModal?.meetingLink;
+    if (!link) return;
+    navigator.clipboard.writeText(link);
+    setCopiedLocalLink(true);
+    setTimeout(() => setCopiedLocalLink(false), 2500);
+  };
   const handleCopyLink = () => {
     if (!scheduledModal?.meetingLink) return;
     navigator.clipboard.writeText(scheduledModal.meetingLink);
@@ -429,26 +446,53 @@ Passcode: ${formData.passcode || 'None'}
 
             {/* Meeting Link & Credentials Block */}
             <div className="space-y-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-dark-border text-xs">
-              {/* Meeting Link */}
+              {/* Shareable Network Link for external devices */}
               <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider text-[10px] flex items-center gap-1">
+                    <span>Shareable Join Link (Other Laptops & Mobile)</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400">Works across Wi-Fi / LAN</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={scheduledModal.networkMeetingLink || scheduledModal.meetingLink}
+                    className="w-full bg-white dark:bg-dark-surface border border-indigo-200 dark:border-indigo-800/60 rounded-xl px-3 py-2 font-mono text-xs text-indigo-900 dark:text-indigo-200 font-semibold select-all"
+                  />
+                  <Button
+                    size="sm"
+                    variant={copiedLink ? 'emerald' : 'gradient'}
+                    onClick={handleCopyLink}
+                    className="shrink-0 flex items-center gap-1.5"
+                  >
+                    {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedLink ? 'Copied' : 'Copy Link'}</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Localhost Link for host */}
+              <div className="space-y-1">
                 <label className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[10px]">
-                  Real-Time Join Link
+                  Local Host Link (This Laptop Only)
                 </label>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     readOnly
-                    value={scheduledModal.meetingLink}
-                    className="w-full bg-white dark:bg-dark-surface border border-slate-200 dark:border-dark-border rounded-xl px-3 py-2 font-mono text-xs text-slate-800 dark:text-slate-200 select-all"
+                    value={scheduledModal.localMeetingLink || `http://localhost:5173/meetings/lobby/${scheduledModal.roomCode}`}
+                    className="w-full bg-white dark:bg-dark-surface border border-slate-200 dark:border-dark-border rounded-xl px-3 py-1.5 font-mono text-[11px] text-slate-600 dark:text-slate-400 select-all"
                   />
                   <Button
                     size="sm"
-                    variant={copiedLink ? 'emerald' : 'outline'}
-                    onClick={handleCopyLink}
-                    className="shrink-0 flex items-center gap-1.5"
+                    variant={copiedLocalLink ? 'emerald' : 'outline'}
+                    onClick={handleCopyLocalLink}
+                    className="shrink-0 flex items-center gap-1 text-[11px] py-1"
                   >
-                    {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedLink ? 'Copied' : 'Copy'}</span>
+                    {copiedLocalLink ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedLocalLink ? 'Copied' : 'Copy'}</span>
                   </Button>
                 </div>
               </div>

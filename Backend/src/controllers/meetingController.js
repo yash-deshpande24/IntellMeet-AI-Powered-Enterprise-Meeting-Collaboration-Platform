@@ -5,6 +5,7 @@ import { AiService } from '../services/aiService.js';
 import { createNotification, findUserByName } from '../services/notificationService.js';
 import { sendMeetingInvitations, generatePlainTextInvite } from '../services/emailService.js';
 import { v4 as uuidv4 } from 'uuid';
+import os from 'os';
 
 const isDbConnected = () => mongoose.connection.readyState === 1;
 
@@ -46,6 +47,19 @@ const generateRoomCode = () => {
   const part2 = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   const part3 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   return `int-${part1}-${part2}-${part3}`;
+};
+
+
+export const getLocalIp = () => {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
 };
 
 const generatePasscode = () => {
@@ -129,14 +143,24 @@ export const createMeeting = async (req, res) => {
     }
 
     // Generate Zoom-style real-time meeting join link
-    const clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-    const meetingLink = `${clientBaseUrl}/meetings/lobby/${roomCode}${passcode ? `?pwd=${passcode}` : ''}`;
+    const lanIp = getLocalIp();
+    const port = 5173;
+    const networkBaseUrl = (process.env.CLIENT_URL && !process.env.CLIENT_URL.includes('localhost'))
+      ? process.env.CLIENT_URL
+      : `http://${lanIp}:${port}`;
+    const localBaseUrl = `http://localhost:${port}`;
+    const networkMeetingLink = `${networkBaseUrl}/meetings/lobby/${roomCode}${passcode ? `?pwd=${passcode}` : ''}`;
+    const localMeetingLink = `${localBaseUrl}/meetings/lobby/${roomCode}${passcode ? `?pwd=${passcode}` : ''}`;
+    const meetingLink = networkMeetingLink;
     const plainTextInvite = generatePlainTextInvite({
       hostName: req.user?.name || 'Host',
       title: meeting.title,
       scheduledAt: meeting.scheduledAt,
       duration: meeting.duration,
       meetingLink,
+      networkMeetingLink,
+      localMeetingLink,
+      lanIp,
       roomCode,
       passcode
     });
