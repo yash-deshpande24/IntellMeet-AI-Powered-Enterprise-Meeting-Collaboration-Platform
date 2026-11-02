@@ -3,38 +3,34 @@ import Meeting from '../models/Meeting.js';
 import jwt from 'jsonwebtoken';
 import { createNotification, findMentionedUsers } from '../services/notificationService.js';
 
-// Active in-memory room tracking for high-performance WebRTC mesh routing
+// Who is in which room (kept in memory, so the backend runs as a single instance)
 const activeRooms = new Map();
-const roomTranscripts = new Map();
+
+// Removes a socket from its current room and tells the others
+const leaveRoom = (socket) => {
+  const roomCode = socket.roomCode;
+  if (!roomCode) return;
+
+  const participants = activeRooms.get(roomCode);
+  if (participants) {
+    participants.delete(socket.id);
+    if (participants.size === 0) activeRooms.delete(roomCode);
+  }
+
+  socket.to(roomCode).emit('user-left', {
+    socketId: socket.id,
+    userName: socket.user?.name || 'Participant'
+  });
+  socket.leave(roomCode);
+  socket.roomCode = null;
+};
 
 export const setupMeetingSocket = (io) => {
   io.on('connection', (socket) => {
     console.log(`[Socket.io] Client connected: ${socket.id}`);
 
-    // Join a private room for this user so notifications can be pushed live
-    const registerUserToken = (token) => {
-      if (!token) return;
-      if (token.startsWith('demo-') || token.startsWith('jwt-token-')) {
-        const isMember = token.includes('member') || token.includes('gmail');
-        socket.join(`user:${isMember ? '65f000000000000000000002' : '65f000000000000000000001'}`);
-        return;
-      }
-      try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const uid = decoded?.id || decoded?._id;
-        if (uid) socket.join(`user:${uid}`);
-      } catch {
-        /* invalid token: ignore */
-      }
-    };
-
-    if (socket.handshake?.auth?.token) {
-      registerUserToken(socket.handshake.auth.token);
-    }
-
-    socket.on('register-user', ({ token }) => {
-      registerUserToken(token);
-      return;
+    // Private room so notifications can be pushed live to one user
+    socket.on('register-user', ({ token } = {}) => {
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         if (decoded?.id) socket.join(`user:${decoded.id}`);
@@ -43,87 +39,91 @@ export const setupMeetingSocket = (io) => {
       }
     });
 
-    // Join meeting room
-    socket.on('join-room', async ({ roomCode, user }) => {
+    // Join a meeting room. The identity comes from the verified token, not from the browser.
+    socket.on('join-room', ({ roomCode, token } = {}) => {
+      if (typeof roomCode !== 'string' || !roomCode || roomCode.length > 100) return;
+
+      let user;
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        user = { id: decoded.id, name: decoded.name, avatar: decoded.avatar, role: decoded.role };
+      } catch {
+        socket.emit('room-error', { message: 'Please log in again to join this meeting.' });
+        return;
+      }
+
+      if (socket.roomCode && socket.roomCode !== roomCode) leaveRoom(socket);
+
       socket.join(roomCode);
       socket.roomCode = roomCode;
       socket.user = user;
 
-      if (!activeRooms.has(roomCode)) {
-        activeRooms.set(roomCode, new Map());
-      }
-
+      if (!activeRooms.has(roomCode)) activeRooms.set(roomCode, new Map());
       const roomParticipants = activeRooms.get(roomCode);
+
       const participantInfo = {
         socketId: socket.id,
-        userId: user?.id || user?._id || socket.id,
-        name: user?.name || 'Guest User',
-        avatar: user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${socket.id}`,
-        role: user?.role || 'Member',
+        userId: user.id || socket.id,
+        name: user.name || 'Guest User',
+        avatar: user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${socket.id}`,
+        role: user.role || 'Member',
         audioMuted: false,
         videoMuted: false,
         screenSharing: false,
         handRaised: false,
         joinedAt: new Date()
       };
-
       roomParticipants.set(socket.id, participantInfo);
 
-      // Return current participant list to the joining peer
-      const existingPeers = Array.from(roomParticipants.values()).filter(p => p.socketId !== socket.id);
-      socket.emit('room-peers', {
-        participants: existingPeers,
-        self: participantInfo
-      });
+      // Tell the newcomer who is already here (the newcomer then sends the WebRTC offers)
+      const existingPeers = Array.from(roomParticipants.values()).filter((p) => p.socketId !== socket.id);
+      socket.emit('room-peers', { participants: existingPeers, self: participantInfo });
 
-      // Broadcast new user joined to all other peers in the room
-      socket.to(roomCode).emit('user-joined', {
-        ...participantInfo,
-        participant: participantInfo
-      });
+      socket.to(roomCode).emit('user-joined', { participant: participantInfo });
 
-      console.log(`[Socket.io] User "${participantInfo.name}" (${socket.id}) joined room: ${roomCode}`);
+      console.log(`[Socket.io] ${participantInfo.name} joined room ${roomCode} (${roomParticipants.size} active)`);
     });
 
-    // WebRTC Signaling: Offer
-    socket.on('signal-offer', ({ targetSocketId, offer }) => {
-      socket.to(targetSocketId).emit('signal-offer', {
-        senderSocketId: socket.id,
-        offer
-      });
+    socket.on('leave-room', () => leaveRoom(socket));
+
+    // WebRTC signaling: only between two people who are in the same room
+    const inSameRoom = (targetSocketId) =>
+      !!socket.roomCode && !!activeRooms.get(socket.roomCode)?.has(targetSocketId);
+
+    socket.on('offer', ({ targetSocketId, offer, callerInfo } = {}) => {
+      if (!inSameRoom(targetSocketId)) return;
+      io.to(targetSocketId).emit('offer', { callerSocketId: socket.id, offer, callerInfo });
     });
 
-    // WebRTC Signaling: Answer
-    socket.on('signal-answer', ({ targetSocketId, answer }) => {
-      socket.to(targetSocketId).emit('signal-answer', {
-        senderSocketId: socket.id,
-        answer
-      });
+    socket.on('answer', ({ targetSocketId, answer } = {}) => {
+      if (!inSameRoom(targetSocketId)) return;
+      io.to(targetSocketId).emit('answer', { responderSocketId: socket.id, answer });
     });
 
-    // WebRTC Signaling: ICE Candidate
-    socket.on('signal-ice-candidate', ({ targetSocketId, candidate }) => {
-      socket.to(targetSocketId).emit('signal-ice-candidate', {
-        senderSocketId: socket.id,
-        candidate
-      });
+    socket.on('ice-candidate', ({ targetSocketId, candidate } = {}) => {
+      if (!inSameRoom(targetSocketId)) return;
+      io.to(targetSocketId).emit('ice-candidate', { senderSocketId: socket.id, candidate });
     });
 
-    // In-room Chat Message
-    socket.on('chat-message', ({ roomCode, message }) => {
+    // Chat (the room comes from the server, so nobody can write into someone else's room)
+    socket.on('chat-message', ({ message } = {}) => {
+      const roomCode = socket.roomCode;
+      if (!roomCode || typeof message !== 'string' || !message.trim()) return;
+      const text = message.trim().slice(0, 2000);
+
       const msgData = {
         id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         sender: socket.user?.name || 'Participant',
         senderId: socket.user?.id || socket.id,
         senderAvatar: socket.user?.avatar || '',
-        text: message,
+        text,
         timestamp: new Date()
       };
 
       io.to(roomCode).emit('chat-message', msgData);
 
       // Notify users mentioned with @Name
-      findMentionedUsers(message).then((users) => {
+      findMentionedUsers(text).then((users) => {
         users.forEach((u) => {
           if (String(u._id) === String(socket.user?.id)) return;
           createNotification({
@@ -131,111 +131,95 @@ export const setupMeetingSocket = (io) => {
             userId: u._id,
             type: 'mention',
             title: `${msgData.sender} mentioned you`,
-            message: String(message).slice(0, 120),
+            message: text.slice(0, 120),
             link: `/meetings/room/${roomCode}`,
           });
         });
       }).catch(() => {});
 
-      // Save to meeting record if available in background
-      Meeting.findOneAndUpdate(
-        { roomCode },
-        { $push: { chatMessages: msgData } }
-      ).catch(() => {});
+      Meeting.findOneAndUpdate({ roomCode }, { $push: { chatMessages: msgData } }).catch(() => {});
     });
 
-    // Typing Indicators
-    socket.on('typing', ({ roomCode, userName }) => {
-      socket.to(roomCode).emit('user-typing', { userName: userName || socket.user?.name });
+    socket.on('typing', () => {
+      if (socket.roomCode) socket.to(socket.roomCode).emit('user-typing', { userName: socket.user?.name });
     });
 
-    socket.on('stop-typing', ({ roomCode, userName }) => {
-      socket.to(roomCode).emit('user-stop-typing', { userName: userName || socket.user?.name });
+    socket.on('stop-typing', () => {
+      if (socket.roomCode) socket.to(socket.roomCode).emit('user-stop-typing', { userName: socket.user?.name });
     });
 
-    // Media Status Toggle (Mute/Unmute, Video On/Off)
-    socket.on('media-toggle', ({ roomCode, audioMuted, videoMuted }) => {
-      if (activeRooms.has(roomCode)) {
-        const participant = activeRooms.get(roomCode).get(socket.id);
-        if (participant) {
-          if (audioMuted !== undefined) participant.audioMuted = audioMuted;
-          if (videoMuted !== undefined) participant.videoMuted = videoMuted;
-        }
+    socket.on('media-toggle', ({ audioMuted, videoMuted } = {}) => {
+      const roomCode = socket.roomCode;
+      if (!roomCode) return;
+      const participant = activeRooms.get(roomCode)?.get(socket.id);
+      if (participant) {
+        if (audioMuted !== undefined) participant.audioMuted = !!audioMuted;
+        if (videoMuted !== undefined) participant.videoMuted = !!videoMuted;
       }
-      socket.to(roomCode).emit('user-media-toggle', {
-        socketId: socket.id,
-        audioMuted,
-        videoMuted
-      });
+      socket.to(roomCode).emit('user-media-toggle', { socketId: socket.id, audioMuted, videoMuted });
     });
 
-    // Screen Sharing Toggle
-    socket.on('screen-share-toggle', ({ roomCode, isSharing }) => {
-      if (activeRooms.has(roomCode)) {
-        const participant = activeRooms.get(roomCode).get(socket.id);
-        if (participant) participant.screenSharing = isSharing;
-      }
+    socket.on('screen-share-toggle', ({ isSharing } = {}) => {
+      const roomCode = socket.roomCode;
+      if (!roomCode) return;
+      const participant = activeRooms.get(roomCode)?.get(socket.id);
+      if (participant) participant.screenSharing = !!isSharing;
       socket.to(roomCode).emit('user-screen-share', {
         socketId: socket.id,
         userName: socket.user?.name || 'Participant',
-        isSharing
+        isSharing: !!isSharing
       });
     });
 
-    // Raise / Lower Hand
-    socket.on('hand-raise-toggle', ({ roomCode, isRaised }) => {
-      if (activeRooms.has(roomCode)) {
-        const participant = activeRooms.get(roomCode).get(socket.id);
-        if (participant) participant.handRaised = isRaised;
-      }
+    socket.on('hand-raise-toggle', ({ isRaised } = {}) => {
+      const roomCode = socket.roomCode;
+      if (!roomCode) return;
+      const participant = activeRooms.get(roomCode)?.get(socket.id);
+      if (participant) participant.handRaised = !!isRaised;
       io.to(roomCode).emit('user-hand-raise', {
         socketId: socket.id,
         userName: socket.user?.name || 'Participant',
-        isRaised
+        isRaised: !!isRaised
       });
     });
 
-    // Emoji Reactions (Floating Animation)
-    socket.on('send-reaction', ({ roomCode, emoji, userName }) => {
+    socket.on('send-reaction', ({ emoji } = {}) => {
+      const roomCode = socket.roomCode;
+      if (!roomCode || typeof emoji !== 'string') return;
       io.to(roomCode).emit('receive-reaction', {
         id: `react-${Date.now()}-${Math.random()}`,
-        emoji,
-        userName: userName || socket.user?.name || 'Participant',
+        emoji: emoji.slice(0, 8),
+        userName: socket.user?.name || 'Participant',
         socketId: socket.id
       });
     });
 
-    // Live Transcription Streaming
-    socket.on('send-transcript-chunk', async ({ roomCode, text, speaker, speakerAvatar }) => {
+    // Live transcription: the speaker's name comes from the verified login
+    socket.on('send-transcript-chunk', ({ text } = {}) => {
+      const roomCode = socket.roomCode;
+      if (!roomCode || typeof text !== 'string' || !text.trim()) return;
+      const clean = text.trim().slice(0, 1000);
+
       const chunk = {
-        speaker: speaker || socket.user?.name || 'Speaker',
-        speakerAvatar: speakerAvatar || socket.user?.avatar || '',
-        text,
+        speaker: socket.user?.name || 'Speaker',
+        speakerAvatar: socket.user?.avatar || '',
+        text: clean,
         timestamp: new Date(),
-        sentiment: text.includes('great') || text.includes('good') || text.includes('agree') ? 'positive' : 'neutral',
+        sentiment: /great|good|agree/i.test(clean) ? 'positive' : 'neutral',
         confidence: 0.96
       };
 
       io.to(roomCode).emit('receive-transcript-chunk', chunk);
-
-      if (!roomTranscripts.has(roomCode)) roomTranscripts.set(roomCode, []);
-      roomTranscripts.get(roomCode).push(chunk);
-
-      // Persist to meeting transcript array
-      Meeting.findOneAndUpdate(
-        { roomCode },
-        { $push: { transcript: chunk } }
-      ).catch(() => {});
+      Meeting.findOneAndUpdate({ roomCode }, { $push: { transcript: chunk } }).catch(() => {});
     });
 
-    // In-Meeting AI Copilot Query
-    socket.on('ask-ai-copilot', async ({ roomCode, question, meetingTitle }) => {
+    socket.on('ask-ai-copilot', async ({ question, meetingTitle } = {}) => {
+      const roomCode = socket.roomCode;
+      if (!roomCode || typeof question !== 'string' || !question.trim()) return;
       const response = await AiService.answerMeetingCopilot({
-        question,
-        meetingContext: { title: meetingTitle || 'Meeting' },
-        transcript: roomTranscripts.get(roomCode) || []
+        question: question.slice(0, 500),
+        meetingContext: { title: meetingTitle || 'Meeting' }
       });
-
       io.to(roomCode).emit('ai-copilot-response', {
         question,
         answer: response.answer,
@@ -244,23 +228,8 @@ export const setupMeetingSocket = (io) => {
       });
     });
 
-    // Disconnect & Cleanup
     socket.on('disconnect', () => {
-      const roomCode = socket.roomCode;
-      if (roomCode && activeRooms.has(roomCode)) {
-        const roomParticipants = activeRooms.get(roomCode);
-        roomParticipants.delete(socket.id);
-
-        socket.to(roomCode).emit('user-left', {
-          socketId: socket.id,
-          userName: socket.user?.name || 'Participant'
-        });
-
-        if (roomParticipants.size === 0) {
-          activeRooms.delete(roomCode);
-          roomTranscripts.delete(roomCode);
-        }
-      }
+      leaveRoom(socket);
       console.log(`[Socket.io] Client disconnected: ${socket.id}`);
     });
   });
