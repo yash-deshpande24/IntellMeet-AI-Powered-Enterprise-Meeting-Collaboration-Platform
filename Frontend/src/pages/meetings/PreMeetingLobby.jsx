@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useMeeting } from '../../context/MeetingContext';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Avatar } from '../../components/common/Avatar';
+import { Input } from '../../components/common/Input';
+import { Card } from '../../components/common/Card';
 import {
   Mic,
   MicOff,
@@ -17,10 +19,19 @@ import {
   Volume2,
   Camera,
   ArrowLeft,
+  Lock,
+  KeyRound,
+  AlertCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
+
+import { meetingService } from '../../services/meetingService';
 
 export const PreMeetingLobby = () => {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const pwdParam = searchParams.get('pwd') || '';
   const navigate = useNavigate();
   const { user } = useAuth();
   const {
@@ -39,6 +50,14 @@ export const PreMeetingLobby = () => {
     setSelectedVideoInput,
   } = useMeeting();
 
+  // Passcode gate states
+  const [meetingDetails, setMeetingDetails] = useState(null);
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [passcodeInput, setPasscodeInput] = useState('');
+  const [passcodeError, setPasscodeError] = useState('');
+  const [verifyingPasscode, setVerifyingPasscode] = useState(false);
+  const [loadingMeeting, setLoadingMeeting] = useState(true);
+
   const [virtualBg, setVirtualBg] = useState('none');
   const [showSettings, setShowSettings] = useState(false);
   const videoRef = useRef(null);
@@ -49,6 +68,44 @@ export const PreMeetingLobby = () => {
     { id: 'office', label: 'Modern Office' },
     { id: 'minimal', label: 'Minimalist' },
   ];
+
+  // Fetch meeting security parameters on mount
+  useEffect(() => {
+    let active = true;
+
+    const checkMeetingSecurity = async () => {
+      setLoadingMeeting(true);
+      try {
+        const res = await meetingService.getMeetingByCode(id);
+        const m = res?.meeting;
+        if (active && m) {
+          setMeetingDetails(m);
+          // If no passcode required or passcode matches URL token
+          if (!m.requirePasscode || !m.passcode) {
+            setIsUnlocked(true);
+          } else if (pwdParam && pwdParam.trim() === m.passcode.trim()) {
+            setIsUnlocked(true);
+          } else {
+            setIsUnlocked(false);
+          }
+        } else if (active) {
+          // If meeting doesn't exist yet / ad-hoc room
+          setIsUnlocked(true);
+        }
+      } catch (err) {
+        console.warn('[PreMeetingLobby] Meeting fetch info:', err.message);
+        if (active) setIsUnlocked(true);
+      } finally {
+        if (active) setLoadingMeeting(false);
+      }
+    };
+
+    checkMeetingSecurity();
+
+    return () => {
+      active = false;
+    };
+  }, [id, pwdParam]);
 
   // Start real camera and microphone when lobby mounts
   useEffect(() => {
@@ -61,12 +118,14 @@ export const PreMeetingLobby = () => {
       }
     };
 
-    initLobbyMedia();
+    if (isUnlocked) {
+      initLobbyMedia();
+    }
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [isUnlocked]);
 
   // Keep video element attached to the active localStream
   useEffect(() => {
@@ -104,9 +163,102 @@ export const PreMeetingLobby = () => {
     }
   };
 
-  const handleJoin = () => {
-    navigate(`/meetings/room/${id || 'meet-102'}`);
+  const handleVerifyPasscode = async (e) => {
+    e.preventDefault();
+    if (!passcodeInput.trim()) {
+      setPasscodeError('Please enter the 6-digit passcode');
+      return;
+    }
+    setVerifyingPasscode(true);
+    setPasscodeError('');
+
+    try {
+      const res = await meetingService.verifyMeetingPasscode(id, passcodeInput.trim());
+      if (res?.valid) {
+        setIsUnlocked(true);
+      } else {
+        setPasscodeError('Invalid meeting passcode. Please check your invitation email.');
+      }
+    } catch (err) {
+      // Local check fallback
+      if (meetingDetails?.passcode && passcodeInput.trim() === meetingDetails.passcode.trim()) {
+        setIsUnlocked(true);
+      } else {
+        setPasscodeError('Invalid meeting passcode. Please check your invitation email.');
+      }
+    } finally {
+      setVerifyingPasscode(false);
+    }
   };
+
+  const handleJoin = () => {
+    const currentPwd = pwdParam || passcodeInput || meetingDetails?.passcode || '';
+    navigate(`/meetings/room/${id || 'meet-102'}${currentPwd ? `?pwd=${encodeURIComponent(currentPwd)}` : ''}`);
+  };
+
+  // PASSCODE GATE SCREEN (Zoom Style)
+  if (!isUnlocked && !loadingMeeting) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-center items-center p-4 sm:p-6 animate-fade-in">
+        <Card className="max-w-md w-full p-8 shadow-2xl bg-slate-900/90 border border-slate-800 space-y-6 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 mx-auto flex items-center justify-center">
+            <Lock className="w-7 h-7" />
+          </div>
+
+          <div className="space-y-1.5">
+            <h2 className="text-xl font-extrabold text-white">
+              Meeting Passcode Required
+            </h2>
+            <p className="text-xs text-slate-400">
+              Room <span className="font-mono font-semibold text-slate-300">{id}</span> is password-protected.
+            </p>
+          </div>
+
+          <form onSubmit={handleVerifyPasscode} className="space-y-4 text-left">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                Enter Security Passcode
+              </label>
+              <Input
+                type="text"
+                autoFocus
+                placeholder="6-digit PIN (e.g. 849201)"
+                leftIcon={KeyRound}
+                value={passcodeInput}
+                onChange={(e) => setPasscodeInput(e.target.value)}
+                error={passcodeError}
+                className="text-center font-mono text-base tracking-widest font-bold"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                The passcode was generated when scheduling and included in the invitation email.
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              variant="gradient"
+              size="lg"
+              className="w-full justify-center"
+              isLoading={verifyingPasscode}
+              rightIcon={ArrowRight}
+            >
+              Verify & Enter Lobby
+            </Button>
+          </form>
+
+          <div className="pt-2 border-t border-slate-800/80">
+            <Link
+              to="/meetings"
+              className="text-xs text-slate-400 hover:text-white transition-colors flex items-center justify-center gap-1.5"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Meetings</span>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between p-4 sm:p-6 lg:p-8 animate-fade-in">
@@ -119,6 +271,9 @@ export const PreMeetingLobby = () => {
         <div className="flex items-center gap-2">
           <Badge variant="emerald" dot>E2EE Verified</Badge>
           <span className="text-xs text-slate-400 font-mono">Room: {id || 'meet-102'}</span>
+          {meetingDetails?.passcode && (
+            <Badge variant="indigo">Passcode: {meetingDetails.passcode}</Badge>
+          )}
         </div>
       </div>
 
@@ -230,10 +385,10 @@ export const PreMeetingLobby = () => {
               Ready to collaborate
             </span>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-              Meeting Room: {id || 'meet-102'}
+              {meetingDetails?.title || `Meeting Room: ${id || 'meet-102'}`}
             </h1>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Check your camera and microphone preview before entering the meeting room.
+              Check your camera and microphone preview before entering the live meeting room.
             </p>
           </div>
 

@@ -13,6 +13,12 @@ export const meetingService = {
     return response.data;
   },
 
+  // Verify meeting passcode
+  verifyMeetingPasscode: async (code, passcode) => {
+    const response = await api.post(`/meetings/code/${code}/verify-passcode`, { passcode });
+    return response.data;
+  },
+
   // Get meeting details by Mongo ID
   getMeetingById: async (id) => {
     const response = await api.get(`/meetings/${id}`);

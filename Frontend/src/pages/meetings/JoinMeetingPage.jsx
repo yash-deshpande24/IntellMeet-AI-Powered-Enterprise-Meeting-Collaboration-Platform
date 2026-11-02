@@ -4,10 +4,11 @@ import { Card } from '../../components/common/Card';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
 import { useNotification } from '../../context/NotificationContext';
-import { Video, ArrowRight, ArrowLeft, ShieldCheck, Keyboard, Radio } from 'lucide-react';
+import { Video, ArrowRight, ArrowLeft, ShieldCheck, Keyboard, Lock } from 'lucide-react';
 
 export const JoinMeetingPage = () => {
-  const [meetingCode, setMeetingCode] = useState('');
+  const [meetingInput, setMeetingInput] = useState('');
+  const [passcode, setPasscode] = useState('');
   const [name, setName] = useState('');
   const [errorText, setErrorText] = useState('');
   const navigate = useNavigate();
@@ -15,19 +16,43 @@ export const JoinMeetingPage = () => {
 
   const handleJoin = (e) => {
     e.preventDefault();
-    if (!meetingCode.trim()) {
-      setErrorText('Please provide a meeting code or room URL');
+    if (!meetingInput.trim()) {
+      setErrorText('Please provide a meeting code or invite URL');
       return;
     }
     setErrorText('');
 
-    // Extract ID if URL pasted
-    let cleanCode = meetingCode.trim();
-    if (cleanCode.includes('/')) {
-      cleanCode = cleanCode.split('/').pop();
+    let rawInput = meetingInput.trim();
+    let roomCode = rawInput;
+    let extractedPwd = passcode.trim();
+
+    // If a full URL was pasted (e.g. http://localhost:5173/meetings/lobby/int-xxx?pwd=123456)
+    if (rawInput.includes('/')) {
+      try {
+        const urlObj = new URL(rawInput, window.location.origin);
+        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
+        roomCode = pathSegments[pathSegments.length - 1] || rawInput;
+        const urlPwd = urlObj.searchParams.get('pwd');
+        if (urlPwd && !extractedPwd) {
+          extractedPwd = urlPwd;
+        }
+      } catch {
+        const lastPart = rawInput.split('/').pop() || '';
+        if (lastPart.includes('?')) {
+          const [code, query] = lastPart.split('?');
+          roomCode = code;
+          const params = new URLSearchParams(query);
+          if (params.get('pwd') && !extractedPwd) {
+            extractedPwd = params.get('pwd');
+          }
+        } else {
+          roomCode = lastPart;
+        }
+      }
     }
 
-    navigate(`/meetings/lobby/${cleanCode}`);
+    const targetUrl = `/meetings/lobby/${roomCode}${extractedPwd ? `?pwd=${encodeURIComponent(extractedPwd)}` : ''}`;
+    navigate(targetUrl);
   };
 
   const sampleCodes = ['INNOV-842-990', 'AI-CORE-771-02', 'UX-SYNC-554-19'];
@@ -55,12 +80,21 @@ export const JoinMeetingPage = () => {
         <form onSubmit={handleJoin} className="space-y-5">
           <Input
             label="Meeting Code or Invite URL *"
-            placeholder="e.g. INNOV-842-990 or meet-102"
+            placeholder="e.g. int-abc-def-ghi or paste 1-click link"
             leftIcon={Keyboard}
-            value={meetingCode}
-            onChange={(e) => setMeetingCode(e.target.value)}
+            value={meetingInput}
+            onChange={(e) => setMeetingInput(e.target.value)}
             error={errorText}
             autoFocus
+          />
+
+          <Input
+            label="Security Passcode (If required)"
+            placeholder="e.g. 6-digit PIN from invitation email"
+            leftIcon={Lock}
+            value={passcode}
+            onChange={(e) => setPasscode(e.target.value)}
+            helperText="Not needed if joining through a 1-click invite link with embedded credentials."
           />
 
           <Input
@@ -68,7 +102,7 @@ export const JoinMeetingPage = () => {
             placeholder="e.g. Alex Vance"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            helperText="Leave empty to use your default enterprise profile name"
+            helperText="Leave empty to use your current profile name"
           />
 
           <Button
@@ -91,18 +125,13 @@ export const JoinMeetingPage = () => {
             {sampleCodes.map((code) => (
               <button
                 key={code}
-                onClick={() => setMeetingCode(code)}
+                onClick={() => setMeetingInput(code)}
                 className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-dark-surface hover:bg-indigo-50 dark:hover:bg-indigo-950/60 text-xs font-mono font-semibold text-slate-700 dark:text-slate-300 hover:text-indigo-600 transition-colors border border-slate-200/60 dark:border-dark-border"
               >
                 {code}
               </button>
             ))}
           </div>
-        </div>
-
-        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-dark-surface border border-slate-200/60 dark:border-dark-border flex items-center gap-2.5 text-xs text-slate-500">
-          <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-          <span>All connections are secured with end-to-end cryptographic media verification.</span>
         </div>
       </Card>
     </div>

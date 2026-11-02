@@ -3,8 +3,35 @@ import Meeting from '../models/Meeting.js';
 import Task from '../models/Task.js';
 import { AiService } from '../services/aiService.js';
 import { createNotification, findUserByName } from '../services/notificationService.js';
+import { sendMeetingInvitations, generatePlainTextInvite } from '../services/emailService.js';
 import { v4 as uuidv4 } from 'uuid';
 
+const isDbConnected = () => mongoose.connection.readyState === 1;
+
+// In-memory fallback meeting store for when MongoDB is in fallback/offline mode
+const inMemoryMeetings = [
+  {
+    _id: '65f000000000000000000010',
+    title: 'Q3 Enterprise Architecture & AI Copilot Review',
+    description: 'Quarterly review of WebRTC mesh stability, AI summarization pipeline, and Kanban integration.',
+    roomCode: 'int-arc-772-990',
+    passcode: '492019',
+    requirePasscode: true,
+    scheduledAt: new Date(),
+    duration: 45,
+    status: 'scheduled',
+    hostName: 'Sarah Connor',
+    hostAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    participants: [
+      { name: 'Sarah Connor', email: 'admin@intellmeet.io' },
+      { name: 'Alex Rivera', email: 'member@intellmeet.io' }
+    ],
+    transcript: [],
+    summary: {
+      tags: ['Architecture', 'WebRTC', 'AI']
+    }
+  }
+];
 
 // A meeting id from the URL must look like a MongoDB id, otherwise the database throws a 500
 const badId = (res, id) => {
@@ -21,38 +48,131 @@ const generateRoomCode = () => {
   return `int-${part1}-${part2}-${part3}`;
 };
 
+const generatePasscode = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
 export const createMeeting = async (req, res) => {
   try {
-    const { title, description, scheduledAt, duration, workspaceId, tags } = req.body;
-    const roomCode = req.body.roomCode || generateRoomCode();
+    const { 
+      title, 
+      description, 
+      scheduledAt, 
+      duration, 
+      workspaceId, 
+      tags,
+      requirePasscode,
+      passcode: userPasscode,
+      participants: inputParticipants,
+      invitedEmails: inputEmails
+    } = req.body;
 
-    const meeting = await Meeting.create({
+    const roomCode = req.body.roomCode || generateRoomCode();
+    const isPasscodeRequired = requirePasscode !== false;
+    const passcode = isPasscodeRequired ? (userPasscode?.trim() || generatePasscode()) : '';
+
+    // Process and sanitize invited emails
+    let invitedEmails = [];
+    if (Array.isArray(inputEmails)) {
+      invitedEmails = inputEmails;
+    } else if (typeof inputEmails === 'string') {
+      invitedEmails = inputEmails.split(/[,;\s]+/).filter(Boolean);
+    } else if (typeof inputParticipants === 'string') {
+      invitedEmails = inputParticipants.split(/[,;\s]+/).filter(Boolean);
+    } else if (Array.isArray(inputParticipants)) {
+      invitedEmails = inputParticipants
+        .map(p => (typeof p === 'string' ? p : p.email))
+        .filter(Boolean);
+    }
+
+    invitedEmails = [...new Set(invitedEmails.map(e => e.trim().toLowerCase()))]
+      .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+
+    const meetingData = {
+      _id: new mongoose.Types.ObjectId().toString(),
       title: title || 'Strategic Project Sync',
       description: description || '',
-      host: req.user._id || req.user.id,
-      hostName: req.user.name || 'Host',
-      hostAvatar: req.user.avatar || '',
+      host: req.user?._id || req.user?.id || '65f000000000000000000001',
+      hostName: req.user?.name || 'Host',
+      hostAvatar: req.user?.avatar || '',
       roomCode,
+      passcode,
+      requirePasscode: isPasscodeRequired,
+      invitedEmails,
       scheduledAt: scheduledAt ? new Date(scheduledAt) : new Date(),
-      duration: duration || 30,
+      duration: duration || 45,
       status: req.body.isInstant ? 'active' : 'scheduled',
       workspaceId: workspaceId || null,
       participants: [{
-        user: req.user._id || req.user.id,
-        name: req.user.name || 'Host',
-        email: req.user.email,
-        avatar: req.user.avatar || '',
+        user: req.user?._id || req.user?.id || '65f000000000000000000001',
+        name: req.user?.name || 'Host',
+        email: req.user?.email || 'host@intellmeet.io',
+        avatar: req.user?.avatar || '',
         joinedAt: new Date()
       }],
+      transcript: [],
       summary: {
         tags: tags || ['Sprint Sync', 'Enterprise', 'Strategy']
       }
+    };
+
+    let meeting = meetingData;
+    if (isDbConnected()) {
+      try {
+        meeting = await Meeting.create(meetingData);
+      } catch (dbErr) {
+        console.warn('[Meeting Controller] MongoDB save notice, using in-memory store:', dbErr.message);
+        inMemoryMeetings.unshift(meetingData);
+      }
+    } else {
+      inMemoryMeetings.unshift(meetingData);
+    }
+
+    // Generate Zoom-style real-time meeting join link
+    const clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const meetingLink = `${clientBaseUrl}/meetings/lobby/${roomCode}${passcode ? `?pwd=${passcode}` : ''}`;
+    const plainTextInvite = generatePlainTextInvite({
+      hostName: req.user?.name || 'Host',
+      title: meeting.title,
+      scheduledAt: meeting.scheduledAt,
+      duration: meeting.duration,
+      meetingLink,
+      roomCode,
+      passcode
     });
+
+    // Send email invitations (Zoom style)
+    let emailStatus = { count: invitedEmails.length, delivered: false, simulated: true };
+    if (invitedEmails.length > 0) {
+      try {
+        emailStatus = await sendMeetingInvitations({
+          hostName: req.user?.name || 'Host',
+          title: meeting.title,
+          description: meeting.description,
+          scheduledAt: meeting.scheduledAt,
+          duration: meeting.duration,
+          meetingLink,
+          roomCode,
+          passcode,
+          recipients: invitedEmails
+        });
+      } catch (emailErr) {
+        console.warn('[Meeting Controller] Email invitation notice:', emailErr.message);
+        emailStatus = { error: emailErr.message, simulated: true };
+      }
+    }
 
     res.status(201).json({
       success: true,
       message: 'Meeting created successfully',
-      meeting
+      meeting,
+      meetingLink,
+      roomCode,
+      passcode,
+      requirePasscode: isPasscodeRequired,
+      invitedEmails,
+      emailStatus,
+      invitationText: plainTextInvite
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -62,6 +182,17 @@ export const createMeeting = async (req, res) => {
 export const getMeetings = async (req, res) => {
   try {
     const { status, limit = 50 } = req.query;
+
+    if (!isDbConnected()) {
+      let filtered = [...inMemoryMeetings];
+      if (status) filtered = filtered.filter(m => m.status === status);
+      return res.status(200).json({
+        success: true,
+        count: filtered.length,
+        meetings: filtered.slice(0, Number(limit))
+      });
+    }
+
     const query = {};
     if (status) query.status = status;
 
@@ -76,31 +207,68 @@ export const getMeetings = async (req, res) => {
       meetings
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    // Graceful in-memory fallback
+    res.status(200).json({
+      success: true,
+      count: inMemoryMeetings.length,
+      meetings: inMemoryMeetings
+    });
   }
 };
 
 export const getMeetingByCode = async (req, res) => {
   try {
     const { code } = req.params;
+
+    if (!isDbConnected()) {
+      let meeting = inMemoryMeetings.find(m => m.roomCode === code);
+      if (!meeting) {
+        meeting = {
+          _id: new mongoose.Types.ObjectId().toString(),
+          title: `Enterprise Collab - ${code}`,
+          host: req.user?._id || '65f000000000000000000001',
+          hostName: req.user?.name || 'Host',
+          hostAvatar: req.user?.avatar || '',
+          roomCode: code,
+          passcode: '',
+          requirePasscode: false,
+          status: 'active',
+          participants: [{
+            user: req.user?._id || '65f000000000000000000001',
+            name: req.user?.name || 'Host',
+            email: req.user?.email || 'host@intellmeet.io',
+            avatar: req.user?.avatar || '',
+            joinedAt: new Date()
+          }],
+          transcript: [],
+          summary: { tags: ['Ad-hoc'] }
+        };
+        inMemoryMeetings.push(meeting);
+      }
+      return res.status(200).json({ success: true, meeting });
+    }
+
     let meeting = await Meeting.findOne({ roomCode: code })
       .populate('host', 'name email avatar department')
       .populate('workspaceId', 'name color');
 
     if (!meeting) {
       // Auto-create room if joining ad-hoc
+      const hostId = req.user?._id || req.user?.id || new mongoose.Types.ObjectId();
+      const hostName = req.user?.name || 'Host';
+      const hostAvatar = req.user?.avatar || '';
       meeting = await Meeting.create({
         title: `Enterprise Collab - ${code}`,
-        host: req.user._id || req.user.id,
-        hostName: req.user.name || 'Host',
-        hostAvatar: req.user.avatar || '',
+        host: hostId,
+        hostName,
+        hostAvatar,
         roomCode: code,
         status: 'active',
         participants: [{
-          user: req.user._id || req.user.id,
-          name: req.user.name || 'Host',
-          email: req.user.email,
-          avatar: req.user.avatar || '',
+          user: hostId,
+          name: hostName,
+          email: req.user?.email || 'host@intellmeet.io',
+          avatar: hostAvatar,
           joinedAt: new Date()
         }]
       });
@@ -111,6 +279,43 @@ export const getMeetingByCode = async (req, res) => {
       meeting
     });
   } catch (error) {
+    // Check in-memory on error
+    const memMeeting = inMemoryMeetings.find(m => m.roomCode === req.params.code);
+    if (memMeeting) {
+      return res.status(200).json({ success: true, meeting: memMeeting });
+    }
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const verifyMeetingPasscode = async (req, res) => {
+  try {
+    const { code } = req.params;
+    const { passcode } = req.body;
+
+    let meeting = null;
+    if (isDbConnected()) {
+      meeting = await Meeting.findOne({ roomCode: code });
+    }
+    if (!meeting) {
+      meeting = inMemoryMeetings.find(m => m.roomCode === code);
+    }
+
+    if (!meeting) {
+      return res.status(404).json({ success: false, message: 'Meeting room not found' });
+    }
+
+    if (!meeting.requirePasscode || !meeting.passcode) {
+      return res.status(200).json({ success: true, valid: true, message: 'No passcode required for this meeting' });
+    }
+
+    const isMatch = (passcode || '').trim() === meeting.passcode.trim();
+    if (!isMatch) {
+      return res.status(401).json({ success: false, valid: false, message: 'Invalid meeting passcode. Please check and try again.' });
+    }
+
+    res.status(200).json({ success: true, valid: true, message: 'Passcode verified successfully' });
+  } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -119,6 +324,13 @@ export const getMeetingById = async (req, res) => {
   try {
     const { id } = req.params;
     if (badId(res, id)) return;
+
+    if (!isDbConnected()) {
+      const meeting = inMemoryMeetings.find(m => m._id === id || m.roomCode === id);
+      if (meeting) return res.status(200).json({ success: true, meeting });
+      return res.status(404).json({ success: false, message: 'Meeting not found' });
+    }
+
     const meeting = await Meeting.findById(id)
       .populate('host', 'name email avatar department')
       .populate('workspaceId', 'name color');
@@ -244,9 +456,15 @@ export const saveTranscriptItem = async (req, res) => {
     meeting.transcript.push(item);
     await meeting.save();
 
-    res.status(200).json({
+    // Broadcast live transcript event to socket room
+    const io = req.app.get('io');
+    if (io) {
+      io.to(meeting.roomCode).emit('transcript-item', item);
+    }
+
+    res.status(201).json({
       success: true,
-      item
+      transcriptItem: item
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -264,26 +482,25 @@ export const convertActionItemToTask = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
     }
 
-    const actionItem = meeting.summary.actionItems.find(a => a.id === actionItemId || a._id?.toString() === actionItemId);
+    const actionItem = meeting.summary.actionItems.find((item) => item.id === actionItemId || item._id?.toString() === actionItemId);
     if (!actionItem) {
-      return res.status(404).json({ success: false, message: 'Action item not found in meeting' });
+      return res.status(404).json({ success: false, message: 'Action item not found in meeting summary' });
     }
 
     const task = await Task.create({
       title: actionItem.task,
-      description: `Auto-extracted from meeting "${meeting.title}".\nOriginal Assignee: ${actionItem.assignee}`,
+      description: `Generated from meeting "${meeting.title}" action items.`,
       status: 'todo',
       priority: priority || actionItem.priority || 'medium',
       assignee: assignee || actionItem.assignee || 'Unassigned',
       creator: req.user._id || req.user.id,
+      workspaceId: workspaceId || meeting.workspaceId,
       meetingId: meeting._id,
       meetingTitle: meeting.title,
-      actionItemId: actionItem.id,
       dueDate: dueDate || actionItem.dueDate || new Date(Date.now() + 3 * 86400000),
-      tags: ['AI Action Item', 'Meeting Sync']
+      tags: ['AI Action Item', 'Meeting Extract']
     });
 
-    // Mark action item converted
     actionItem.status = 'converted';
     actionItem.convertedTaskId = task._id;
     await meeting.save();
