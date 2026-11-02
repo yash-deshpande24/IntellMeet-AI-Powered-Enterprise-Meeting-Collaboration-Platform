@@ -22,7 +22,6 @@ export const MeetingProvider = ({ children }) => {
   // Active side panel tab ('chat' | 'participants' | 'ai' | null)
   const [activeTab, setActiveTab] = useState(null);
   const [activeRoomCode, setActiveRoomCode] = useState(null);
-  const screenStreamRef = useRef(null);
 
   // Hardware devices
   const [deviceList, setDeviceList] = useState({
@@ -95,16 +94,8 @@ export const MeetingProvider = ({ children }) => {
       }
 
       const constraints = {
-        video: {
-    ...(videoId ? { deviceId: { exact: videoId } } : {}),
-    width: { ideal: 1280 },
-    height: { ideal: 720 },
-    aspectRatio: { ideal: 16 / 9 },
-    frameRate: { ideal: 30, max: 30 },
-  },
-  audio: audioId
-    ? { deviceId: { exact: audioId } }
-    : true,
+        video: videoId ? { deviceId: { exact: videoId } } : true,
+        audio: audioId ? { deviceId: { exact: audioId } } : true,
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -153,10 +144,10 @@ export const MeetingProvider = ({ children }) => {
     // When ICE candidate is discovered, send it to the other user
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-       socket.emit('ice-candidate', {
-  targetSocketId,
-  candidate: event.candidate,
-});
+        socket.emit('signal-ice-candidate', {
+          targetSocketId,
+          candidate: event.candidate,
+        });
       }
     };
 
@@ -184,22 +175,17 @@ export const MeetingProvider = ({ children }) => {
     }
 
     if (socket) {
-      socket.emit('join-room', { roomCode, token });
+      socket.emit('join-room', { roomCode, user });
 
       socket.off('room-peers');
       socket.off('user-joined');
       socket.off('user-left');
-      socket.off('offer');
-      socket.off('answer');
-      socket.off('ice-candidate');
+      socket.off('signal-offer');
+      socket.off('signal-answer');
+      socket.off('signal-ice-candidate');
       socket.off('user-media-toggle');
       socket.off('chat-message');
       socket.off('receive-reaction');
-
-      socket.on('room-error', ({ message }) => {
-  console.error('[Meeting Room Error]:', message);
-  alert(message);
-});
 
       // 1. Initial list of peers already in room
       socket.on('room-peers', ({ participants: peers, self }) => {
@@ -233,10 +219,10 @@ export const MeetingProvider = ({ children }) => {
           pc.createOffer()
             .then((offer) => pc.setLocalDescription(offer))
             .then(() => {
-             socket.emit('offer', {
-  targetSocketId: peer.socketId,
-  offer: pc.localDescription,
-});
+              socket.emit('signal-offer', {
+                targetSocketId: peer.socketId,
+                offer: pc.localDescription,
+              });
             })
             .catch((err) => console.log('Error creating WebRTC offer:', err));
         });
@@ -263,75 +249,65 @@ export const MeetingProvider = ({ children }) => {
       });
 
       // 3. Receive WebRTC Offer
-     socket.on('offer', async ({ callerSocketId, offer }) => {
-  const pc = createPeerConnection(callerSocketId, socket);
+      socket.on('signal-offer', async ({ senderSocketId, offer }) => {
+        const pc = createPeerConnection(senderSocketId, socket);
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
 
-  try {
-    await pc.setRemoteDescription(
-      new RTCSessionDescription(offer)
-    );
+          socket.emit('signal-answer', {
+            targetSocketId: senderSocketId,
+            answer: pc.localDescription,
+          });
 
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    socket.emit('answer', {
-      targetSocketId: callerSocketId,
-      answer: pc.localDescription,
-    });
-
-    if (candidateQueueRef.current[callerSocketId]) {
-      for (const cand of candidateQueueRef.current[callerSocketId]) {
-        await pc.addIceCandidate(new RTCIceCandidate(cand));
-      }
-
-      delete candidateQueueRef.current[callerSocketId];
-    }
-  } catch (err) {
-    console.error('Error answering offer:', err);
-  }
-});
+          // Add any queued ICE candidates
+          if (candidateQueueRef.current[senderSocketId]) {
+            for (const cand of candidateQueueRef.current[senderSocketId]) {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+            }
+            delete candidateQueueRef.current[senderSocketId];
+          }
+        } catch (err) {
+          console.log('Error answering offer:', err);
+        }
+      });
 
       // 4. Receive WebRTC Answer
-      socket.on('answer', async ({ responderSocketId, answer }) => {
-  const pc = peersRef.current[responderSocketId];
+      socket.on('signal-answer', async ({ senderSocketId, answer }) => {
+        const pc = peersRef.current[senderSocketId];
+        if (pc) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
 
-  if (pc) {
-    try {
-      await pc.setRemoteDescription(
-        new RTCSessionDescription(answer)
-      );
-
-      if (candidateQueueRef.current[responderSocketId]) {
-        for (const cand of candidateQueueRef.current[responderSocketId]) {
-          await pc.addIceCandidate(new RTCIceCandidate(cand));
+            if (candidateQueueRef.current[senderSocketId]) {
+              for (const cand of candidateQueueRef.current[senderSocketId]) {
+                await pc.addIceCandidate(new RTCIceCandidate(cand));
+              }
+              delete candidateQueueRef.current[senderSocketId];
+            }
+          } catch (err) {
+            console.log('Error setting remote answer:', err);
+          }
         }
-
-        delete candidateQueueRef.current[responderSocketId];
-      }
-    } catch (err) {
-      console.error('Error setting remote answer:', err);
-    }
-  }
-});
+      });
 
       // 5. Receive ICE Candidate
-     socket.on('ice-candidate', async ({ senderSocketId, candidate }) => {
-  const pc = peersRef.current[senderSocketId];
-
-  if (pc && pc.remoteDescription) {
-    try {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (err) {
-      console.error('Error adding ICE candidate:', err);
-    }
-  } else {
-    if (!candidateQueueRef.current[senderSocketId]) {
-      candidateQueueRef.current[senderSocketId] = [];
-    }
-
-    candidateQueueRef.current[senderSocketId].push(candidate);
-  }
-});
+      socket.on('signal-ice-candidate', async ({ senderSocketId, candidate }) => {
+        const pc = peersRef.current[senderSocketId];
+        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            console.log('Error adding ICE candidate:', err);
+          }
+        } else {
+          if (!candidateQueueRef.current[senderSocketId]) {
+            candidateQueueRef.current[senderSocketId] = [];
+          }
+          candidateQueueRef.current[senderSocketId].push(candidate);
+        }
+      });
 
       // 6. User media toggle
       socket.on('user-media-toggle', ({ socketId, audioMuted, videoMuted }) => {
@@ -450,36 +426,11 @@ export const MeetingProvider = ({ children }) => {
     });
   };
 
-  const toggleScreenSharing = async () => {
-  try {
-    // Stop screen sharing if already active
-    if (isScreenSharing) {
-      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
-      screenStreamRef.current = null;
-      setIsScreenSharing(false);
-      return;
-    }
+  // Toggle screen share
+  const toggleScreenSharing = () => {
+    setIsScreenSharing((prev) => !prev);
+  };
 
-    // Open browser screen-sharing picker
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: true,
-    });
-
-    screenStreamRef.current = stream;
-    setIsScreenSharing(true);
-
-    // Reset state when user clicks browser's Stop sharing
-    stream.getVideoTracks()[0].addEventListener('ended', () => {
-      screenStreamRef.current = null;
-      setIsScreenSharing(false);
-    });
-  } catch (error) {
-    if (error.name !== 'NotAllowedError') {
-      console.error('Screen sharing error:', error);
-    }
-  }
-};
   // Toggle recording
   const toggleRecording = () => {
     setIsRecording((prev) => !prev);
