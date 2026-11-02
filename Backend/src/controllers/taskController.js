@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Task from '../models/Task.js';
 import { createNotification, findUserByName } from '../services/notificationService.js';
 
@@ -79,6 +80,9 @@ export const createTask = async (req, res) => {
 export const updateTask = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
     const updateData = req.body;
 
     const before = await Task.findById(id).select('assignee');
@@ -104,6 +108,9 @@ export const updateTask = async (req, res) => {
 export const updateTaskStatus = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
     const { status, order } = req.body;
 
     const task = await Task.findById(id);
@@ -128,6 +135,9 @@ export const updateTaskStatus = async (req, res) => {
 export const deleteTask = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
     const task = await Task.findByIdAndDelete(id);
 
     if (!task) {
