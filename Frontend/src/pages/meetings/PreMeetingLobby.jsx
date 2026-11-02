@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useMeeting } from '../../context/MeetingContext';
 import { useAuth } from '../../context/AuthContext';
-import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Avatar } from '../../components/common/Avatar';
@@ -17,7 +16,6 @@ import {
   ArrowRight,
   Volume2,
   Camera,
-  Image,
   ArrowLeft,
 } from 'lucide-react';
 
@@ -30,6 +28,9 @@ export const PreMeetingLobby = () => {
     isCameraOn,
     toggleMic,
     toggleCamera,
+    localStream,
+    startLocalStream,
+    deviceList,
     selectedAudioInput,
     setSelectedAudioInput,
     selectedAudioOutput,
@@ -40,6 +41,7 @@ export const PreMeetingLobby = () => {
 
   const [virtualBg, setVirtualBg] = useState('none');
   const [showSettings, setShowSettings] = useState(false);
+  const videoRef = useRef(null);
 
   const virtualBackgrounds = [
     { id: 'none', label: 'None' },
@@ -47,6 +49,60 @@ export const PreMeetingLobby = () => {
     { id: 'office', label: 'Modern Office' },
     { id: 'minimal', label: 'Minimalist' },
   ];
+
+  // Start real camera and microphone when lobby mounts
+  useEffect(() => {
+    let active = true;
+
+    const initLobbyMedia = async () => {
+      const stream = await startLocalStream(selectedVideoInput, selectedAudioInput);
+      if (active && videoRef.current && stream) {
+        videoRef.current.srcObject = stream;
+      }
+    };
+
+    initLobbyMedia();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Keep video element attached to the active localStream
+  useEffect(() => {
+    if (videoRef.current && localStream) {
+      videoRef.current.srcObject = localStream;
+    }
+  }, [localStream, isCameraOn]);
+
+  // Handle switching video device
+  const handleVideoDeviceChange = async (e) => {
+    const newId = e.target.value;
+    setSelectedVideoInput(newId);
+    const stream = await startLocalStream(newId, selectedAudioInput);
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  };
+
+  // Handle switching audio input device
+  const handleAudioDeviceChange = async (e) => {
+    const newId = e.target.value;
+    setSelectedAudioInput(newId);
+    const stream = await startLocalStream(selectedVideoInput, newId);
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  };
+
+  // Handle switching audio output speaker
+  const handleAudioOutputChange = (e) => {
+    const newId = e.target.value;
+    setSelectedAudioOutput(newId);
+    if (videoRef.current && typeof videoRef.current.setSinkId === 'function') {
+      videoRef.current.setSinkId(newId).catch((err) => console.warn(err));
+    }
+  };
 
   const handleJoin = () => {
     navigate(`/meetings/room/${id || 'meet-102'}`);
@@ -68,16 +124,18 @@ export const PreMeetingLobby = () => {
 
       {/* Main Center Area */}
       <div className="max-w-6xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center my-auto py-6">
-        {/* Left Column (7 cols): Camera Preview Screen */}
+        {/* Left Column (7 cols): Real Camera Preview */}
         <div className="lg:col-span-7 flex flex-col items-center">
           <div className="relative w-full aspect-video rounded-3xl bg-slate-900 border-2 border-slate-800 shadow-2xl overflow-hidden flex items-center justify-center group">
-            {isCameraOn ? (
+            {isCameraOn && localStream ? (
               <div className="relative w-full h-full">
-                <img
-                  src={user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&auto=format&fit=crop&q=80'}
-                  alt="Preview"
-                  className={`w-full h-full object-cover ${
-                    virtualBg === 'blur' ? 'filter blur-[3px]' : ''
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover scale-x-[-1] ${
+                    virtualBg === 'blur' ? 'filter blur-[4px]' : ''
                   }`}
                 />
                 {virtualBg === 'office' && (
@@ -165,64 +223,85 @@ export const PreMeetingLobby = () => {
           </div>
         </div>
 
-        {/* Right Column (5 cols): Join Controls & Device Hardware */}
+        {/* Right Column (5 cols): Join Controls & Real Device Selection */}
         <div className="lg:col-span-5 space-y-6">
           <div className="space-y-2">
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">
               Ready to collaborate
             </span>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-              Sprint 24 Architecture & WebRTC Sync
+              Meeting Room: {id || 'meet-102'}
             </h1>
             <p className="text-xs text-slate-400 leading-relaxed">
-              David Miller and 2 others are currently inside the room.
+              Check your camera and microphone preview before entering the meeting room.
             </p>
           </div>
 
-          {/* Quick Audio / Video Device Selectors */}
+          {/* Real Audio / Video Device Selectors */}
           <div className="space-y-3.5 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs">
+            {/* Microphone Input */}
             <div className="space-y-1">
               <label className="text-slate-400 font-semibold flex items-center gap-1.5">
                 <Mic className="w-3.5 h-3.5 text-indigo-400" /> Microphone Input
               </label>
               <select
                 value={selectedAudioInput}
-                onChange={(e) => setSelectedAudioInput(e.target.value)}
+                onChange={handleAudioDeviceChange}
                 className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500"
               >
-                <option>Default - Studio Microphone (Elgato Wave:3)</option>
-                <option>MacBook Pro Microphone Array</option>
-                <option>Bluetooth Headset Audio (AirPods Pro)</option>
+                {deviceList.audioInputs.length === 0 ? (
+                  <option value="">Default Microphone</option>
+                ) : (
+                  deviceList.audioInputs.map((d, idx) => (
+                    <option key={d.deviceId || idx} value={d.deviceId}>
+                      {d.label || `Microphone ${idx + 1}`}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
+            {/* Audio Output */}
             <div className="space-y-1">
               <label className="text-slate-400 font-semibold flex items-center gap-1.5">
                 <Volume2 className="w-3.5 h-3.5 text-indigo-400" /> Audio Output (Speaker)
               </label>
               <select
                 value={selectedAudioOutput}
-                onChange={(e) => setSelectedAudioOutput(e.target.value)}
+                onChange={handleAudioOutputChange}
                 className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500"
               >
-                <option>Default - Spatial Audio Speakers (High Definition)</option>
-                <option>Built-in System Output</option>
-                <option>External Monitor Output (DisplayPort)</option>
+                {deviceList.audioOutputs.length === 0 ? (
+                  <option value="">Default System Speaker</option>
+                ) : (
+                  deviceList.audioOutputs.map((d, idx) => (
+                    <option key={d.deviceId || idx} value={d.deviceId}>
+                      {d.label || `Speaker ${idx + 1}`}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
+            {/* Video Camera */}
             <div className="space-y-1">
               <label className="text-slate-400 font-semibold flex items-center gap-1.5">
                 <Camera className="w-3.5 h-3.5 text-indigo-400" /> Video Camera
               </label>
               <select
                 value={selectedVideoInput}
-                onChange={(e) => setSelectedVideoInput(e.target.value)}
+                onChange={handleVideoDeviceChange}
                 className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500"
               >
-                <option>Integrated UltraHD 4K Brio Webcam</option>
-                <option>FaceTime HD Camera (Built-in)</option>
-                <option>OBS Virtual Camera Source</option>
+                {deviceList.videoInputs.length === 0 ? (
+                  <option value="">Default Web Camera</option>
+                ) : (
+                  deviceList.videoInputs.map((d, idx) => (
+                    <option key={d.deviceId || idx} value={d.deviceId}>
+                      {d.label || `Camera ${idx + 1}`}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
           </div>
@@ -241,14 +320,14 @@ export const PreMeetingLobby = () => {
           {/* Privacy Note */}
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
-            <span>AI transcription is active. Participants are notified upon entry.</span>
+            <span>Real-time WebRTC mesh connection is active when you join.</span>
           </div>
         </div>
       </div>
 
       {/* Footer */}
       <div className="text-center text-xs text-slate-600">
-        IntellMeet Enterprise WebRTC Engine v2.4 • High Performance Node Active
+        IntellMeet WebRTC Mesh • Real-Time Audio & Video
       </div>
     </div>
   );

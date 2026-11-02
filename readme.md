@@ -47,14 +47,29 @@ Kanban board, and notifies the people involved.
 | F-01 | Authentication and profiles | Signup, login, JWT, bcrypt, roles (Admin, Member), avatar upload (Cloudinary with Base64 fallback) | Done |
 | F-02 | Meetings | Create, schedule, join by room code, lobby, live room, history | Done |
 | F-03 | AI meeting intelligence | Summary, key points, decisions, action items with assignee and priority, sentiment, speaker talk-time | Done (rule-based engine, optional OpenAI) |
-| F-04 | Real-time collaboration | Socket.io chat, transcript events, presence | CONFIRM STATUS |
+| F-04 | Real-time collaboration & WebRTC | Real-time video/audio mesh, Socket.io signaling & chat, transcript events, presence | Done |
 | F-05 | Post-meeting dashboard | Summaries, transcripts, action items | Done |
 | F-06 | Workspaces and Kanban | Workspaces, 5-column board, drag and drop, task creation, tasks from action items | Done |
 | F-07 | Notifications | Live notifications, bell with unread state, read persistence | Done |
-| F-08 | Analytics | Meeting and productivity metrics endpoint and dashboard | CONFIRM STATUS |
+| F-08 | Analytics | Meeting and productivity metrics endpoint and dashboard | Done |
 | F-09 | DevOps | Docker, Compose, Kubernetes manifests, Helm chart, GitHub Actions | Done |
 
-Edit the status column so it matches what your demo really does. Judges compare it with the code.
+### WebRTC Real-Time Audio & Video
+
+**What changed**
+- Lobby now opens the user's real camera and microphone, with real device selection
+- Live room shows each participant's live video and audio (WebRTC mesh, Socket.io signaling)
+- Removed demo participant tiles and labels that were not real
+
+**How to test**
+1. Open the lobby in Chrome and in an Incognito window with two different users
+2. Join the same room in both
+3. Each window should show the other person's live video and audio
+
+**Known limits**
+- Mesh topology: suitable for small rooms
+- STUN only: some strict networks may need a TURN server
+- Screen share and recording are not included
 
 ---
 
