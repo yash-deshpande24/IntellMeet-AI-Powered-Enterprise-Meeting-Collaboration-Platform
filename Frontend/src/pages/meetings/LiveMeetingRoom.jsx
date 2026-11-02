@@ -36,6 +36,68 @@ import {
 import { getSocket } from '../../services/socket';
 import { meetingService } from '../../services/meetingService';
 
+// Real video tile for a participant (local or remote peer)
+const VideoTile = ({ participant, isHandRaised }) => {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    if (videoRef.current && participant.stream) {
+      videoRef.current.srcObject = participant.stream;
+    }
+  }, [participant.stream]);
+
+  const hasVideo = participant.isCameraOn && participant.stream;
+
+  return (
+    <div
+      className={`relative w-full h-full min-h-[200px] max-h-[380px] rounded-3xl bg-slate-900 overflow-hidden border-2 transition-all duration-200 flex items-center justify-center group ${
+        participant.isMicOn ? 'border-slate-700' : 'border-slate-800/80'
+      }`}
+    >
+      {/* Real Video Stream or Avatar fallback */}
+      {hasVideo ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted={participant.isMe} // muted for self to avoid echo
+          className={`w-full h-full object-cover ${participant.isMe ? 'scale-x-[-1]' : ''}`}
+        />
+      ) : (
+        <div className="flex flex-col items-center gap-3">
+          <Avatar name={participant.name} size="xl" />
+          <span className="text-xs text-slate-400 font-medium">Camera is off</span>
+        </div>
+      )}
+
+      {/* Top overlay badge: Hand Raised */}
+      <div className="absolute top-3 left-3 flex items-center gap-2 z-10">
+        {participant.isMe && isHandRaised && (
+          <span className="px-2 py-0.5 rounded-md bg-amber-500 text-[10px] font-bold text-slate-950 flex items-center gap-1 animate-bounce">
+            <Hand className="w-3 h-3" /> Hand Raised
+          </span>
+        )}
+      </div>
+
+      {/* Bottom Overlay: Participant Name & Audio Status */}
+      <div className="absolute bottom-3 inset-x-3 flex items-center justify-between z-10">
+        <div className="px-2.5 py-1 rounded-xl bg-slate-950/80 backdrop-blur-md text-xs font-semibold text-white flex items-center gap-2 border border-slate-800/80">
+          <span className="truncate max-w-[150px]">{participant.name}</span>
+          <span className="text-[10px] text-slate-400 font-normal">({participant.role || 'Member'})</span>
+        </div>
+
+        <div className="p-1.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/80">
+          {participant.isMicOn ? (
+            <Mic className="w-3.5 h-3.5 text-emerald-400" />
+          ) : (
+            <MicOff className="w-3.5 h-3.5 text-rose-500" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const LiveMeetingRoom = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -50,7 +112,6 @@ export const LiveMeetingRoom = () => {
     isHandRaised,
     activeTab,
     setActiveTab,
-    activeSpeaker,
     participants,
     chatMessages,
     activeReactions,
@@ -65,16 +126,10 @@ export const LiveMeetingRoom = () => {
     sendChatMessage,
   } = useMeeting();
 
-  const [meetingTimer, setMeetingTimer] = useState(1458); // seconds elapsed (e.g. 24:18)
+  const [meetingTimer, setMeetingTimer] = useState(0); // real seconds elapsed
   const [chatInput, setChatInput] = useState('');
   const [aiQuestionInput, setAiQuestionInput] = useState('');
-  const [aiResponses, setAiResponses] = useState([
-    {
-      q: 'What did David Miller mention regarding WebRTC mesh latency?',
-      a: 'David indicated that APAC edge cluster latency is measured at 14ms average with adaptive bitrate fallback enabled for low-bandwidth participants.',
-      time: '02:35 PM',
-    },
-  ]);
+  const [aiResponses, setAiResponses] = useState([]);
   const [endMeetingModalOpen, setEndMeetingModalOpen] = useState(false);
   const [reactionsPopover, setReactionsPopover] = useState(false);
 
@@ -219,66 +274,20 @@ export const LiveMeetingRoom = () => {
               : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-2'
           }`}
         >
-          {participants.map((participant) => {
-            const isSpeaker = activeSpeaker.includes(participant.name.split(' ')[0]);
-            const isMe = participant.id === 'p-1';
-
-            return (
-              <div
+          {participants.length === 0 ? (
+            <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
+              <span className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+              <p className="text-sm">Connecting to room...</p>
+            </div>
+          ) : (
+            participants.map((participant) => (
+              <VideoTile
                 key={participant.id}
-                className={`relative w-full h-full min-h-[200px] max-h-[380px] rounded-3xl bg-slate-900 overflow-hidden border-2 transition-all duration-200 flex items-center justify-center group ${
-                  isSpeaker
-                    ? 'border-indigo-500 shadow-glow-primary ring-2 ring-indigo-500/20'
-                    : 'border-slate-800/80'
-                }`}
-              >
-                {/* Simulated Video Stream or Avatar fallback */}
-                {participant.isCameraOn ? (
-                  <img
-                    src={participant.avatar}
-                    alt={participant.name}
-                    className="w-full h-full object-cover select-none"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-3">
-                    <Avatar name={participant.name} size="xl" />
-                    <span className="text-xs text-slate-400 font-medium">Camera is off</span>
-                  </div>
-                )}
-
-                {/* Top overlay badge: Active Speaker & Hand Raised */}
-                <div className="absolute top-3 left-3 flex items-center gap-2 z-10">
-                  {isSpeaker && (
-                    <span className="px-2 py-0.5 rounded-md bg-indigo-600/90 backdrop-blur-md text-[10px] font-bold text-white flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                      Speaking
-                    </span>
-                  )}
-                  {isMe && isHandRaised && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-500 text-[10px] font-bold text-slate-950 flex items-center gap-1 animate-bounce">
-                      <Hand className="w-3 h-3" /> Hand Raised
-                    </span>
-                  )}
-                </div>
-
-                {/* Bottom Overlay: Participant Name & Audio Status */}
-                <div className="absolute bottom-3 inset-x-3 flex items-center justify-between z-10">
-                  <div className="px-2.5 py-1 rounded-xl bg-slate-950/80 backdrop-blur-md text-xs font-semibold text-white flex items-center gap-2 border border-slate-800/80">
-                    <span className="truncate max-w-[150px]">{participant.name}</span>
-                    <span className="text-[10px] text-slate-400 font-normal">({participant.role})</span>
-                  </div>
-
-                  <div className="p-1.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/80">
-                    {participant.isMicOn ? (
-                      <Mic className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <MicOff className="w-3.5 h-3.5 text-rose-500" />
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                participant={participant}
+                isHandRaised={isHandRaised}
+              />
+            ))
+          )}
         </div>
 
         {/* Bottom Floating Meeting Control Bar */}
@@ -481,17 +490,23 @@ export const LiveMeetingRoom = () => {
           {activeTab === 'chat' && (
             <div className="flex-1 flex flex-col justify-between overflow-hidden">
               <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
-                {chatMessages.map((msg) => (
-                  <div key={msg.id} className="space-y-1">
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <span className="font-bold text-slate-200">{msg.sender}</span>
-                      <span>{msg.time}</span>
-                    </div>
-                    <div className="p-3 rounded-2xl bg-slate-800/80 text-xs text-slate-200 leading-relaxed border border-slate-700/50">
-                      {msg.text}
-                    </div>
+                {chatMessages.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-xs text-slate-500">
+                    No messages yet. Send a message to start!
                   </div>
-                ))}
+                ) : (
+                  chatMessages.map((msg) => (
+                    <div key={msg.id} className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                        <span className="font-bold text-slate-200">{msg.sender}</span>
+                        <span>{msg.time}</span>
+                      </div>
+                      <div className="p-3 rounded-2xl bg-slate-800/80 text-xs text-slate-200 leading-relaxed border border-slate-700/50">
+                        {msg.text}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Chat Input */}

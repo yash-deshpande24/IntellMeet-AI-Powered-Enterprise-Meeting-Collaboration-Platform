@@ -1,11 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { initSocket, getSocket, disconnectSocket } from '../services/socket';
 
-// Create Meeting Context
 const MeetingContext = createContext();
 
+// Free public STUN servers for peer-to-peer connection discovery
+const iceServers = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ],
+};
+
 export const MeetingProvider = ({ children }) => {
-  // Audio, video, and screen sharing states
+  // Mic and camera states
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -14,74 +21,38 @@ export const MeetingProvider = ({ children }) => {
 
   // Active side panel tab ('chat' | 'participants' | 'ai' | null)
   const [activeTab, setActiveTab] = useState(null);
-  const [activeSpeaker, setActiveSpeaker] = useState('David Miller');
   const [activeRoomCode, setActiveRoomCode] = useState(null);
 
-  // Selected hardware devices
-  const [selectedAudioInput, setSelectedAudioInput] = useState('Default - Studio Microphone');
-  const [selectedAudioOutput, setSelectedAudioOutput] = useState('Default - Speakers / Headphones');
-  const [selectedVideoInput, setSelectedVideoInput] = useState('Integrated HD Webcam');
+  // Hardware devices
+  const [deviceList, setDeviceList] = useState({
+    audioInputs: [],
+    audioOutputs: [],
+    videoInputs: [],
+  });
+  const [selectedAudioInput, setSelectedAudioInput] = useState('');
+  const [selectedAudioOutput, setSelectedAudioOutput] = useState('');
+  const [selectedVideoInput, setSelectedVideoInput] = useState('');
 
-  // Meeting participants list (initial mock baseline)
-  const [participants, setParticipants] = useState([
-    {
-      id: 'p-1',
-      name: 'Alex Vance (You)',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      role: 'Host',
-      isMicOn: true,
-      isCameraOn: true,
-      isScreenSharing: false,
-    },
-    {
-      id: 'p-2',
-      name: 'David Miller',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      role: 'Co-Host',
-      isMicOn: true,
-      isCameraOn: true,
-      isScreenSharing: false,
-    },
-    {
-      id: 'p-3',
-      name: 'Elena Rostova',
-      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
-      role: 'Speaker',
-      isMicOn: false,
-      isCameraOn: true,
-      isScreenSharing: false,
-    },
-    {
-      id: 'p-4',
-      name: 'Sarah Chen',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-      role: 'Attendee',
-      isMicOn: true,
-      isCameraOn: false,
-      isScreenSharing: false,
-    },
-  ]);
+  // Real local media stream
+  const [localStream, setLocalStream] = useState(null);
+  const localStreamRef = useRef(null);
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
+
+  // Real participants in the room
+  const [participants, setParticipants] = useState([]);
 
   // In-meeting chat messages
-  const [chatMessages, setChatMessages] = useState([
-    {
-      id: 'cm-1',
-      sender: 'Elena Rostova',
-      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
-      text: 'Good afternoon everyone! Excited to walk through the 2.0 release.',
-      time: '02:31 PM',
-    },
-    {
-      id: 'cm-2',
-      sender: 'David Miller',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      text: 'Audio and video link check: everything is streaming with 14ms latency.',
-      time: '02:32 PM',
-    },
-  ]);
+  const [chatMessages, setChatMessages] = useState([]);
 
   // Floating emoji reactions
   const [activeReactions, setActiveReactions] = useState([]);
+
+  // WebRTC mesh peer connections: { [peerSocketId]: RTCPeerConnection }
+  const peersRef = useRef({});
+  // Queue for ICE candidates arriving before remote description
+  const candidateQueueRef = useRef({});
 
   // Room code ref for socket handlers
   const roomRef = useRef(activeRoomCode);
@@ -89,63 +60,280 @@ export const MeetingProvider = ({ children }) => {
     roomRef.current = activeRoomCode;
   }, [activeRoomCode]);
 
-  // Connect to live Socket.io room
-  const joinMeetingRoom = (roomCode, user) => {
+  // Enumerate real input/output devices
+  const getDevices = async () => {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return;
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter((d) => d.kind === 'audioinput');
+      const audioOutputs = devices.filter((d) => d.kind === 'audiooutput');
+      const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+
+      setDeviceList({ audioInputs, audioOutputs, videoInputs });
+
+      if (audioInputs.length > 0 && !selectedAudioInput) {
+        setSelectedAudioInput(audioInputs[0].deviceId);
+      }
+      if (audioOutputs.length > 0 && !selectedAudioOutput) {
+        setSelectedAudioOutput(audioOutputs[0].deviceId);
+      }
+      if (videoInputs.length > 0 && !selectedVideoInput) {
+        setSelectedVideoInput(videoInputs[0].deviceId);
+      }
+    } catch (err) {
+      console.warn('Could not enumerate devices:', err);
+    }
+  };
+
+  // Start or switch real local camera and microphone stream
+  const startLocalStream = async (videoId, audioId) => {
+    try {
+      // Stop old tracks if already active
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
+      const constraints = {
+        video: videoId ? { deviceId: { exact: videoId } } : true,
+        audio: audioId ? { deviceId: { exact: audioId } } : true,
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      setLocalStream(stream);
+      localStreamRef.current = stream;
+
+      // Apply initial mic / camera enabled state
+      stream.getAudioTracks().forEach((t) => {
+        t.enabled = isMicOn;
+      });
+      stream.getVideoTracks().forEach((t) => {
+        t.enabled = isCameraOn;
+      });
+
+      // Update self participant stream if already in a room
+      setParticipants((prev) =>
+        prev.map((p) => (p.isMe ? { ...p, stream } : p))
+      );
+
+      // Refresh device labels with permission granted
+      await getDevices();
+
+      return stream;
+    } catch (err) {
+      console.warn('Camera/Mic permission failed:', err);
+      return null;
+    }
+  };
+
+  // Create an RTCPeerConnection for a peer
+  const createPeerConnection = (targetSocketId, socket) => {
+    if (peersRef.current[targetSocketId]) {
+      return peersRef.current[targetSocketId];
+    }
+
+    const pc = new RTCPeerConnection(iceServers);
+    peersRef.current[targetSocketId] = pc;
+
+    // Send local tracks to the remote peer
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current);
+      });
+    }
+
+    // When ICE candidate is discovered, send it to the other user
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('signal-ice-candidate', {
+          targetSocketId,
+          candidate: event.candidate,
+        });
+      }
+    };
+
+    // When remote track arrives, attach remote stream to that participant in state
+    pc.ontrack = (event) => {
+      const remoteStream = event.streams[0];
+      setParticipants((prev) =>
+        prev.map((p) => (p.id === targetSocketId ? { ...p, stream: remoteStream } : p))
+      );
+    };
+
+    return pc;
+  };
+
+  // Join meeting room with WebRTC mesh & Socket.io signaling
+  const joinMeetingRoom = async (roomCode, user) => {
     setActiveRoomCode(roomCode);
     const token = localStorage.getItem('intellmeet_token');
     const socket = initSocket(token);
 
+    // Make sure local stream is running
+    let stream = localStreamRef.current;
+    if (!stream) {
+      stream = await startLocalStream(selectedVideoInput, selectedAudioInput);
+    }
+
     if (socket) {
       socket.emit('join-room', { roomCode, user });
 
-      // Handle peers list from backend
       socket.off('room-peers');
-      socket.on('room-peers', ({ participants: peers }) => {
-        if (peers && peers.length > 0) {
-          const mappedPeers = peers.map((p) => ({
-            id: p.socketId || p.userId,
-            name: p.name,
-            avatar: p.avatar,
-            role: p.role || 'Member',
-            isMicOn: !p.audioMuted,
-            isCameraOn: !p.videoMuted,
-            isScreenSharing: !!p.screenSharing,
-          }));
-          setParticipants((prev) => {
-            const selfUser = prev.find((p) => p.id === 'p-1') || prev[0];
-            return [selfUser, ...mappedPeers];
-          });
-        }
+      socket.off('user-joined');
+      socket.off('user-left');
+      socket.off('signal-offer');
+      socket.off('signal-answer');
+      socket.off('signal-ice-candidate');
+      socket.off('user-media-toggle');
+      socket.off('chat-message');
+      socket.off('receive-reaction');
+
+      // 1. Initial list of peers already in room
+      socket.on('room-peers', ({ participants: peers, self }) => {
+        const selfParticipant = {
+          id: self.socketId,
+          name: `${user?.name || 'You'} (You)`,
+          avatar: user?.avatar,
+          role: user?.role || 'Host',
+          isMe: true,
+          isMicOn: isMicOn,
+          isCameraOn: isCameraOn,
+          stream: localStreamRef.current,
+        };
+
+        const existingPeers = (peers || []).map((p) => ({
+          id: p.socketId,
+          name: p.name || 'Participant',
+          avatar: p.avatar,
+          role: p.role || 'Member',
+          isMe: false,
+          isMicOn: !p.audioMuted,
+          isCameraOn: !p.videoMuted,
+          stream: null,
+        }));
+
+        setParticipants([selfParticipant, ...existingPeers]);
+
+        // Connect to existing peers (newcomer creates offer)
+        (peers || []).forEach((peer) => {
+          const pc = createPeerConnection(peer.socketId, socket);
+          pc.createOffer()
+            .then((offer) => pc.setLocalDescription(offer))
+            .then(() => {
+              socket.emit('signal-offer', {
+                targetSocketId: peer.socketId,
+                offer: pc.localDescription,
+              });
+            })
+            .catch((err) => console.log('Error creating WebRTC offer:', err));
+        });
       });
 
-      // Handle new user joined
-      socket.off('user-joined');
-      socket.on('user-joined', ({ participant: p }) => {
+      // 2. Another user joined room
+      socket.on('user-joined', (p) => {
         setParticipants((prev) => {
-          if (prev.some((x) => x.id === (p.socketId || p.userId))) return prev;
+          if (prev.some((x) => x.id === p.socketId)) return prev;
           return [
             ...prev,
             {
-              id: p.socketId || p.userId,
-              name: p.name,
+              id: p.socketId,
+              name: p.name || 'Participant',
               avatar: p.avatar,
               role: p.role || 'Member',
+              isMe: false,
               isMicOn: !p.audioMuted,
               isCameraOn: !p.videoMuted,
-              isScreenSharing: !!p.screenSharing,
+              stream: null,
             },
           ];
         });
       });
 
-      // Handle user left
-      socket.off('user-left');
+      // 3. Receive WebRTC Offer
+      socket.on('signal-offer', async ({ senderSocketId, offer }) => {
+        const pc = createPeerConnection(senderSocketId, socket);
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          socket.emit('signal-answer', {
+            targetSocketId: senderSocketId,
+            answer: pc.localDescription,
+          });
+
+          // Add any queued ICE candidates
+          if (candidateQueueRef.current[senderSocketId]) {
+            for (const cand of candidateQueueRef.current[senderSocketId]) {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+            }
+            delete candidateQueueRef.current[senderSocketId];
+          }
+        } catch (err) {
+          console.log('Error answering offer:', err);
+        }
+      });
+
+      // 4. Receive WebRTC Answer
+      socket.on('signal-answer', async ({ senderSocketId, answer }) => {
+        const pc = peersRef.current[senderSocketId];
+        if (pc) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+            if (candidateQueueRef.current[senderSocketId]) {
+              for (const cand of candidateQueueRef.current[senderSocketId]) {
+                await pc.addIceCandidate(new RTCIceCandidate(cand));
+              }
+              delete candidateQueueRef.current[senderSocketId];
+            }
+          } catch (err) {
+            console.log('Error setting remote answer:', err);
+          }
+        }
+      });
+
+      // 5. Receive ICE Candidate
+      socket.on('signal-ice-candidate', async ({ senderSocketId, candidate }) => {
+        const pc = peersRef.current[senderSocketId];
+        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            console.log('Error adding ICE candidate:', err);
+          }
+        } else {
+          if (!candidateQueueRef.current[senderSocketId]) {
+            candidateQueueRef.current[senderSocketId] = [];
+          }
+          candidateQueueRef.current[senderSocketId].push(candidate);
+        }
+      });
+
+      // 6. User media toggle
+      socket.on('user-media-toggle', ({ socketId, audioMuted, videoMuted }) => {
+        setParticipants((prev) =>
+          prev.map((p) => {
+            if (p.id !== socketId) return p;
+            return {
+              ...p,
+              isMicOn: audioMuted !== undefined ? !audioMuted : p.isMicOn,
+              isCameraOn: videoMuted !== undefined ? !videoMuted : p.isCameraOn,
+            };
+          })
+        );
+      });
+
+      // 7. User left room
       socket.on('user-left', ({ socketId }) => {
+        if (peersRef.current[socketId]) {
+          peersRef.current[socketId].close();
+          delete peersRef.current[socketId];
+        }
+        delete candidateQueueRef.current[socketId];
         setParticipants((prev) => prev.filter((p) => p.id !== socketId));
       });
 
-      // Handle chat message broadcast
-      socket.off('chat-message');
+      // 8. In-room chat
       socket.on('chat-message', (msg) => {
         setChatMessages((prev) => {
           if (prev.some((m) => m.id === msg.id)) return prev;
@@ -162,8 +350,7 @@ export const MeetingProvider = ({ children }) => {
         });
       });
 
-      // Handle floating reactions from peers
-      socket.off('receive-reaction');
+      // 9. Floating reactions
       socket.on('receive-reaction', (reaction) => {
         const xPos = 40 + Math.random() * 20;
         const newReaction = { id: reaction.id || Date.now(), emoji: reaction.emoji, x: xPos };
@@ -177,29 +364,39 @@ export const MeetingProvider = ({ children }) => {
 
   // Leave meeting room
   const leaveMeetingRoom = () => {
+    // Close peer connections
+    Object.values(peersRef.current).forEach((pc) => {
+      try {
+        pc.close();
+      } catch (e) {}
+    });
+    peersRef.current = {};
+    candidateQueueRef.current = {};
+
+    // Stop local camera and microphone tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      setLocalStream(null);
+      localStreamRef.current = null;
+    }
+
+    setParticipants([]);
+    setChatMessages([]);
     disconnectSocket();
     setActiveRoomCode(null);
   };
-
-  // Switch active speaker periodically for visual realism
-  useEffect(() => {
-    const speakerList = ['David Miller', 'Elena Rostova', 'Alex Vance (You)'];
-    let index = 0;
-
-    const interval = setInterval(() => {
-      index = (index + 1) % speakerList.length;
-      setActiveSpeaker(speakerList[index]);
-    }, 9000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   // Toggle microphone
   const toggleMic = () => {
     setIsMicOn((prev) => {
       const nextState = !prev;
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach((track) => {
+          track.enabled = nextState;
+        });
+      }
       setParticipants((list) =>
-        list.map((p) => (p.id === 'p-1' ? { ...p, isMicOn: nextState } : p))
+        list.map((p) => (p.isMe ? { ...p, isMicOn: nextState } : p))
       );
       const socket = getSocket();
       if (socket && roomRef.current) {
@@ -213,8 +410,13 @@ export const MeetingProvider = ({ children }) => {
   const toggleCamera = () => {
     setIsCameraOn((prev) => {
       const nextState = !prev;
+      if (localStreamRef.current) {
+        localStreamRef.current.getVideoTracks().forEach((track) => {
+          track.enabled = nextState;
+        });
+      }
       setParticipants((list) =>
-        list.map((p) => (p.id === 'p-1' ? { ...p, isCameraOn: nextState } : p))
+        list.map((p) => (p.isMe ? { ...p, isCameraOn: nextState } : p))
       );
       const socket = getSocket();
       if (socket && roomRef.current) {
@@ -226,14 +428,7 @@ export const MeetingProvider = ({ children }) => {
 
   // Toggle screen share
   const toggleScreenSharing = () => {
-    setIsScreenSharing((prev) => {
-      const next = !prev;
-      const socket = getSocket();
-      if (socket && roomRef.current) {
-        socket.emit('screen-share-toggle', { roomCode: roomRef.current, isSharing: next });
-      }
-      return next;
-    });
+    setIsScreenSharing((prev) => !prev);
   };
 
   // Toggle recording
@@ -269,18 +464,14 @@ export const MeetingProvider = ({ children }) => {
       });
     }
 
-    // Remove reaction after 2.5 seconds
     setTimeout(() => {
       setActiveReactions((prev) => prev.filter((r) => r.id !== reactionId));
     }, 2500);
   };
 
-  // Send a chat message
+  // Send chat message
   const sendChatMessage = (text, user) => {
     if (!text.trim()) return;
-
-    const senderName = user?.name || 'Alex Vance (You)';
-    const senderAvatar = user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
 
     const socket = getSocket();
     if (socket && roomRef.current) {
@@ -288,16 +479,6 @@ export const MeetingProvider = ({ children }) => {
         roomCode: roomRef.current,
         message: text.trim(),
       });
-    } else {
-      // Local fallback
-      const newMsg = {
-        id: 'cm-' + Date.now(),
-        sender: senderName,
-        avatar: senderAvatar,
-        text: text.trim(),
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setChatMessages((prev) => [...prev, newMsg]);
     }
   };
 
@@ -311,13 +492,16 @@ export const MeetingProvider = ({ children }) => {
         isHandRaised,
         activeTab,
         setActiveTab,
-        activeSpeaker,
+        deviceList,
         selectedAudioInput,
         setSelectedAudioInput,
         selectedAudioOutput,
         setSelectedAudioOutput,
         selectedVideoInput,
         setSelectedVideoInput,
+        getDevices,
+        localStream,
+        startLocalStream,
         participants,
         chatMessages,
         activeReactions,
@@ -338,7 +522,6 @@ export const MeetingProvider = ({ children }) => {
   );
 };
 
-// Custom hook to use meeting context
 export const useMeeting = () => {
   const context = useContext(MeetingContext);
   if (!context) {

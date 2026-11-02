@@ -95,6 +95,19 @@ export const getMeetingById = async (req, res) => {
   }
 };
 
+export const getMeetingByCode = async (req, res) => {
+  try {
+    const { code } = req.params;
+    const meeting = await Meeting.findOne({ roomCode: code }).populate('workspaceId', 'name color');
+    if (!meeting) {
+      return res.status(404).json({ success: false, message: 'Meeting room not found' });
+    }
+    res.status(200).json({ success: true, meeting });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const updateMeetingStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -164,6 +177,8 @@ export const generateMeetingSummary = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const triggerAiSummary = generateMeetingSummary;
 
 export const saveTranscriptItem = async (req, res) => {
   try {
