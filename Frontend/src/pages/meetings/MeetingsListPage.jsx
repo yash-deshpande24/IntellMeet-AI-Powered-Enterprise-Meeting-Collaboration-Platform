@@ -19,6 +19,8 @@ import {
   Play,
   FileText,
   Filter,
+  Lock,
+  Check,
 } from 'lucide-react';
 
 export const MeetingsListPage = () => {
@@ -49,7 +51,8 @@ export const MeetingsListPage = () => {
             participants: m.participants || [],
             hasAiSummary: !!m.summary?.executiveSummary,
             tags: m.summary?.tags || ['Enterprise', 'Sync'],
-            passcode: '904812',
+            passcode: m.passcode || '',
+            requirePasscode: m.requirePasscode !== false,
           }));
 
           const existingCodes = new Set(backendMapped.map((b) => b.code));
@@ -77,9 +80,12 @@ export const MeetingsListPage = () => {
     return matchesTab && matchesSearch;
   });
 
-  const handleCopyLink = (code) => {
-    navigator.clipboard.writeText(`https://intellmeet.io/join/${code}`);
-    success(`Invite link for room ${code} copied to clipboard!`);
+  const handleCopyLink = (m) => {
+    const code = typeof m === 'string' ? m : m.code;
+    const pwd = typeof m === 'object' && m.passcode ? `?pwd=${encodeURIComponent(m.passcode)}` : '';
+    const link = `${window.location.origin}/meetings/lobby/${code}${pwd}`;
+    navigator.clipboard.writeText(link);
+    success(`1-Click invite link with credentials for ${code} copied!`);
   };
 
   return (
@@ -91,7 +97,7 @@ export const MeetingsListPage = () => {
             Meeting Management Hub
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Browse upcoming conferences, join live active rooms, and access AI archives
+            Browse upcoming conferences, join live active rooms, and copy Zoom-style invitations
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -101,19 +107,19 @@ export const MeetingsListPage = () => {
             </Button>
           </Link>
           <Link to="/meetings/schedule">
-            <Button variant="primary" leftIcon={PlusCircle}>
+            <Button variant="gradient" leftIcon={PlusCircle}>
               Schedule Meeting
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* Tabs & Search Filter Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
-        {/* Filter Tabs */}
-        <div className="flex items-center bg-slate-100 dark:bg-dark-surface p-1 rounded-xl">
+      {/* Filter and Search Bar */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* Tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-dark-surface rounded-2xl w-full sm:w-auto overflow-x-auto">
           {[
-            { id: 'all', label: 'All Rooms' },
+            { id: 'all', label: 'All Sessions' },
             { id: 'upcoming', label: 'Upcoming' },
             { id: 'ongoing', label: 'Live Now' },
             { id: 'completed', label: 'Completed' },
@@ -121,9 +127,9 @@ export const MeetingsListPage = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 activeTab === tab.id
-                  ? 'bg-white dark:bg-indigo-600 text-indigo-700 dark:text-white shadow-sm font-bold'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -132,56 +138,80 @@ export const MeetingsListPage = () => {
           ))}
         </div>
 
-        {/* Search input */}
-        <div className="relative max-w-xs w-full">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        {/* Search */}
+        <div className="relative w-full sm:w-72">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search by title, code or topic..."
+            placeholder="Search meetings by topic or code..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full pl-10 pr-4 py-2 rounded-2xl text-xs bg-white dark:bg-dark-surface border border-slate-200 dark:border-dark-border text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>
       </div>
 
       {/* Meeting Cards Grid */}
       {filteredMeetings.length === 0 ? (
-        <Card className="p-12 text-center space-y-3">
-          <Video className="w-10 h-10 text-slate-400 mx-auto" />
-          <h3 className="text-base font-bold text-slate-800 dark:text-white">
-            No meetings found
-          </h3>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            Try adjusting your search query or tab filters to find what you're looking for.
-          </p>
+        <Card className="p-12 text-center space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
+            <Video className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">No meetings found</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Try adjusting your search criteria or schedule a new enterprise conference.
+            </p>
+          </div>
+          <Link to="/meetings/schedule">
+            <Button variant="outline" size="sm" leftIcon={PlusCircle}>
+              Schedule New Conference
+            </Button>
+          </Link>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredMeetings.map((meeting) => (
             <Card
-              key={meeting.id}
-              className="p-5 sm:p-6 flex flex-col justify-between space-y-4 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all"
+              key={meeting.id || meeting.code}
+              hover
+              className="p-5 flex flex-col justify-between space-y-4 border border-slate-200/80 dark:border-dark-border"
             >
               <div className="space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    {meeting.status === 'ongoing' ? (
-                      <Badge variant="emerald" dot>Live Room</Badge>
-                    ) : meeting.status === 'completed' ? (
-                      <Badge variant="slate">Concluded</Badge>
-                    ) : (
-                      <Badge variant="indigo">Scheduled</Badge>
-                    )}
-                    <span className="text-xs font-mono text-slate-500 font-semibold">
+                {/* Status & Copy Header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Badge
+                      variant={
+                        meeting.status === 'ongoing'
+                          ? 'rose'
+                          : meeting.status === 'upcoming'
+                          ? 'indigo'
+                          : 'slate'
+                      }
+                      dot={meeting.status === 'ongoing'}
+                    >
+                      {meeting.status === 'ongoing'
+                        ? 'Live Active'
+                        : meeting.status === 'upcoming'
+                        ? 'Scheduled'
+                        : 'Concluded'}
+                    </Badge>
+                    <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
                       {meeting.code}
                     </span>
+                    {meeting.passcode && (
+                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/40 flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" />
+                        {meeting.passcode}
+                      </span>
+                    )}
                   </div>
 
                   <button
-                    onClick={() => handleCopyLink(meeting.code)}
+                    onClick={() => handleCopyLink(meeting)}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-dark-surface"
-                    title="Copy Meeting Invite Link"
+                    title="Copy 1-Click Meeting Invite"
                   >
                     <Copy className="w-4 h-4" />
                   </button>
@@ -246,7 +276,7 @@ export const MeetingsListPage = () => {
                       </Button>
                     </Link>
                   ) : (
-                    <Link to={`/meetings/lobby/${meeting.id}`}>
+                    <Link to={`/meetings/lobby/${meeting.code || meeting.id}${meeting.passcode ? `?pwd=${encodeURIComponent(meeting.passcode)}` : ''}`}>
                       <Button
                         variant={meeting.status === 'ongoing' ? 'primary' : 'outline'}
                         size="sm"

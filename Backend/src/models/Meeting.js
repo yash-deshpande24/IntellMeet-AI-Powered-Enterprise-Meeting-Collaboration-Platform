@@ -54,6 +54,20 @@ const meetingSchema = new mongoose.Schema({
     unique: true,
     trim: true,
   },
+  passcode: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  requirePasscode: {
+    type: Boolean,
+    default: true,
+  },
+  invitedEmails: [{
+    type: String,
+    trim: true,
+    lowercase: true,
+  }],
   scheduledAt: {
     type: Date,
     default: Date.now,
